@@ -813,12 +813,46 @@ function renderDashboard() {
   });
   const outstanding = totalGiven - totalReturned;
   const grid = document.getElementById('summary-grid');
-  if (!grid) return;
   grid.innerHTML = `
     <div class="summary-card"><div class="label">Total Lent</div><div class="value amber">₹${fmt(totalGiven)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''}</div></div>
     <div class="summary-card"><div class="label">Outstanding</div><div class="value red">₹${fmt(outstanding)}</div><div class="sub">Yet to recover</div></div>
   `;
 
+  // Horizontal scroll - active loans
+  const activeBorrowers = borrowers.filter(b => getBalance(b.id) > 0);
+  const bcont = document.getElementById('dash-borrowers');
+  if (activeBorrowers.length === 0) {
+    bcont.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No active loans</div>';
+  } else {
+    bcont.innerHTML = activeBorrowers.map(b => {
+      const bal = getBalance(b.id);
+      return `<div class="mini-card" onclick="openDetail('${b.id}')">
+        <div class="mini-card-avatar" style="background:${b.color||'#e8b86d'}22;color:${b.color||'#e8b86d'}">${b.name[0].toUpperCase()}</div>
+        <div class="mini-card-name">${b.name}</div>
+        <div class="mini-card-amount" style="color:var(--accent)">₹${fmt(bal)}</div>
+        <div class="mini-card-sub">outstanding</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Horizontal scroll - interest this month
+  const thisMonth = monthKey(new Date());
+  const allIP = getAllIpeople();
+  const icont = document.getElementById('dash-interest');
+  if (allIP.length === 0) {
+    icont.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No interest people yet</div>';
+  } else {
+    icont.innerHTML = allIP.map(ip => {
+      const rec = DB.imonths.find(m => m.pid === ip.id && m.month === thisMonth);
+      const expected = Math.round(ip.amount * ip.rate / 100);
+      return `<div class="mini-card" onclick="openIDetail('${ip.id}')">
+        <div class="mini-card-avatar" style="background:${ip.color||'#5bc4a0'}22;color:${ip.color||'#5bc4a0'}">${ip.name[0].toUpperCase()}</div>
+        <div class="mini-card-name">${ip.name}</div>
+        <div class="mini-card-amount" style="color:${rec?'var(--accent2)':'var(--danger)'}">${rec ? '✓ ₹'+fmt(rec.amount) : '₹'+fmt(expected)}</div>
+        <div class="mini-card-sub">${rec ? 'received' : 'pending'}</div>
+      </div>`;
+    }).join('');
+  }
 }
 
 function renderBorrowers() {
