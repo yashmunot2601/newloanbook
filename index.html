@@ -603,8 +603,8 @@
     <div class="modal-handle"></div>
     <h3>Add New Borrower</h3>
     <div class="field"><label>Full Name</label><input type="text" id="b-name" placeholder="e.g. Amit Kumar"/></div>
-    <div class="field"><label>Loan Amount (₹)</label><input type="number" id="b-amount" placeholder="25000"/></div>
-    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="b-rate" placeholder="e.g. 1.5 (0 for no interest)"/></div>
+    <div class="field"><label>Loan Amount (₹)</label><input type="text" inputmode="numeric" id="b-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="b-rate" placeholder="e.g. 1.5 (0 for no interest)" step="0.1"/></div>
     <div class="field"><label>Loan Date</label><input type="date" id="b-date"/></div>
     <div class="field"><label>Notes (optional)</label><textarea id="b-notes" rows="2" placeholder="Purpose, due date, etc."></textarea></div>
     <div class="field">
@@ -646,8 +646,8 @@
     <h3>Edit Borrower</h3>
     <input type="hidden" id="e-id"/>
     <div class="field"><label>Full Name</label><input type="text" id="e-name" placeholder="e.g. Amit Kumar"/></div>
-    <div class="field"><label>Loan Amount (₹)</label><input type="number" id="e-amount" placeholder="25000"/></div>
-    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="e-rate" placeholder="e.g. 1.5 (0 for no interest)"/></div>
+    <div class="field"><label>Loan Amount (₹)</label><input type="text" inputmode="numeric" id="e-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="e-rate" placeholder="e.g. 1.5 (0 for no interest)" step="0.1"/></div>
     <div class="field"><label>Loan Date</label><input type="date" id="e-date"/></div>
     <div class="field"><label>Notes (optional)</label><textarea id="e-notes" rows="2" placeholder="Purpose, due date, etc."></textarea></div>
     <div class="field">
@@ -684,11 +684,11 @@
 <div class="modal-overlay" id="modal-iperson">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h3 id="iperson-modal-title">Add Interest Person</h3>
+    <h3 id="iperson-modal-title">Add Borrower (Interest Only)</h3>
     <input type="hidden" id="ip-id"/>
     <div class="field"><label>Full Name</label><input type="text" id="ip-name" placeholder="e.g. Suresh Bhai"/></div>
-    <div class="field"><label>Principal Amount (₹)</label><input type="number" id="ip-amount" placeholder="1,00,000"/></div>
-    <div class="field"><label>Monthly Interest Rate (%)</label><input type="number" id="ip-rate" placeholder="e.g. 1.5 (for 1.5% per month)"/></div>
+    <div class="field"><label>Principal Amount (₹)</label><input type="text" inputmode="numeric" id="ip-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Monthly Interest Rate (%)</label><input type="number" id="ip-rate" placeholder="e.g. 1.5 (for 1.5% per month)" step="0.1"/></div>
     <div class="field"><label>Start Month</label><input type="month" id="ip-start"/></div>
     <div class="field"><label>Notes (optional)</label><textarea id="ip-notes" rows="2" placeholder="Any details..."></textarea></div>
     <div class="field">
@@ -871,12 +871,12 @@ function enterApp() {
   document.getElementById('user-avatar').textContent = currentUser.name[0].toUpperCase();
   document.getElementById('dash-name').textContent = currentUser.name;
   if (currentUser.role === 'viewer') {
-    document.getElementById('fab-btn').style.display = 'none';
     document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
     viewFilter = 'mine';
   } else {
-    viewFilter = 'all'; // owners start with all view
+    viewFilter = 'all';
   }
+  document.getElementById('fab-btn').style.display = 'flex'; // always show FAB for all users
   renderDashboard();
   renderInterestPage();
   renderSettings();
@@ -1119,7 +1119,7 @@ function openEditModal(id) {
   if (!b) return;
   document.getElementById('e-id').value = id;
   document.getElementById('e-name').value = b.name;
-  document.getElementById('e-amount').value = b.amount || '';
+  document.getElementById('e-amount').value = b.amount ? Number(b.amount).toLocaleString('en-IN') : '';
   document.getElementById('e-rate').value = b.rate || '';
   document.getElementById('e-date').value = b.date || '';
   document.getElementById('e-notes').value = b.notes || '';
@@ -1133,8 +1133,8 @@ function openEditModal(id) {
 async function saveEditBorrower() {
   const id = document.getElementById('e-id').value;
   const name = document.getElementById('e-name').value.trim();
-  const amount = parseFloat(document.getElementById('e-amount').value);
-  if (!name || isNaN(amount)) { alert('Please enter a name and amount.'); return; }
+  const amount = parseAmount(document.getElementById('e-amount').value);
+  if (!name || !amount) { alert('Please enter a name and amount.'); return; }
   try {
     const data = {
       name, amount,
@@ -1170,15 +1170,28 @@ function calcInterestAmount(principal, rate, fromDate) {
 }
 
 // ========== MODALS ==========
+// Indian number formatting: 100 → 100, 1000 → 1,000, 100000 → 1,00,000
+function formatAmountInput(el) {
+  const raw = el.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+  if (!raw) { el.value = ''; return; }
+  const n = parseInt(raw, 10);
+  el.value = n.toLocaleString('en-IN');
+}
+function parseAmount(val) {
+  return parseFloat(String(val).replace(/,/g, '')) || 0;
+}
+
 function openFab() {
+  // Always open Add Borrower from anywhere
   if (currentPage === 'detail') { openPaymentModal(); return; }
-  if (currentPage === 'interest' || currentPage === 'idetail') { openIPersonModal(); return; }
   const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   document.getElementById('b-date').value = today;
   document.getElementById('b-name').value = '';
   document.getElementById('b-amount').value = '';
   document.getElementById('b-rate').value = '';
   document.getElementById('b-notes').value = '';
+  selectedColor = '#e8b86d';
+  document.querySelectorAll('#color-picker .color-dot').forEach(d => d.classList.toggle('selected', d.dataset.c === selectedColor));
   openModal('modal-borrower');
 }
 function openPaymentModal() {
@@ -1210,8 +1223,8 @@ function setPayType(t) {
 
 async function saveBorrower() {
   const name = document.getElementById('b-name').value.trim();
-  const amount = parseFloat(document.getElementById('b-amount').value);
-  if (!name || isNaN(amount)) { alert('Please enter a name and amount.'); return; }
+  const amount = parseAmount(document.getElementById('b-amount').value);
+  if (!name || !amount) { alert('Please enter a name and amount.'); return; }
   try {
     const [b] = await dbInsert('lb_borrowers', {
       name, amount,
@@ -1475,6 +1488,7 @@ function openIDetail(id) {
         ${canDelete ? `<button class="btn btn-danger" style="flex:1" onclick="confirmDeleteIP('${ip.id}')">🗑 Delete</button>` : ''}
       </div>`;
     })()}
+    <div class="section-header"><span class="section-title">Receipt Log</span></div>
     <div class="calc-card" style="padding:4px 16px">
       ${received.length===0?'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No receipts yet.<br>Tap ❌ on the grid to mark months.</div>':
         received.sort((a,b)=>b.month.localeCompare(a.month)).map(r=>`
@@ -1501,7 +1515,7 @@ function openIPersonModal(editId) {
   if (editId) {
     const ip = DB.ipeople.find(x => x.id === editId);
     document.getElementById('ip-name').value = ip.name;
-    document.getElementById('ip-amount').value = ip.amount;
+    document.getElementById('ip-amount').value = ip.amount ? Number(ip.amount).toLocaleString('en-IN') : '';
     document.getElementById('ip-rate').value = ip.rate;
     document.getElementById('ip-start').value = ip.start;
     document.getElementById('ip-notes').value = ip.notes||'';
@@ -1518,9 +1532,9 @@ function openIPersonModal(editId) {
 async function saveIPerson() {
   const id = document.getElementById('ip-id').value;
   const name = document.getElementById('ip-name').value.trim();
-  const amount = parseFloat(document.getElementById('ip-amount').value);
+  const amount = parseAmount(document.getElementById('ip-amount').value);
   const rate = parseFloat(document.getElementById('ip-rate').value);
-  if (!name || isNaN(amount) || isNaN(rate)) { alert('Please fill name, amount and rate.'); return; }
+  if (!name || !amount || isNaN(rate)) { alert('Please fill name, amount and rate.'); return; }
   const data = { name, amount, rate,
     start: document.getElementById('ip-start').value,
     notes: document.getElementById('ip-notes').value.trim(),
@@ -1580,8 +1594,12 @@ function renderSettings() {
   document.getElementById('s-username').textContent = currentUser.name;
   document.getElementById('s-role').textContent = currentUser.role === 'owner' ? 'Owner' : 'Family';
   document.getElementById('s-invite').textContent = DB.inviteCode;
-  if (currentUser.role === 'owner') {
-    document.getElementById('owner-settings').style.display = 'block';
+
+  const ownerPanel = document.getElementById('owner-settings');
+
+  // Only real owners can see the manage panel
+  if (isOwner()) {
+    ownerPanel.style.display = 'block';
     const ml = document.getElementById('members-list');
     if (DB.users.length === 0) { ml.innerHTML = '<div style="color:var(--muted);font-size:13px">No members yet</div>'; return; }
     ml.innerHTML = DB.users.map(u => `
@@ -1601,15 +1619,22 @@ function renderSettings() {
           ` : `<div class="tag tag-amber">Owner</div><div style="font-size:11px;color:var(--muted)">(you)</div>`}
         </div>
       </div>`).join('');
+  } else {
+    // Family users — hide manage panel completely
+    ownerPanel.style.display = 'none';
+    // Also hide invite code section for family
+    document.getElementById('s-invite').closest('.settings-item').style.display = 'none';
   }
 }
 
 function confirmDeleteUser(userId, userName) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can delete users'); return; }
   if (!confirm(`Delete user "${userName}"?\n\nThis will remove their account but keep their data. This cannot be undone.`)) return;
   deleteUser(userId, userName);
 }
 
 async function deleteUser(userId, userName) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can delete users'); return; }
   try {
     await dbDelete('lb_users', 'id=eq.' + userId);
     DB.users = DB.users.filter(u => u.id !== userId);
@@ -1619,6 +1644,7 @@ async function deleteUser(userId, userName) {
 }
 
 async function toggleUserRole(userId, userName, currentRole) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can change roles'); return; }
   const newRole = currentRole === 'owner' ? 'viewer' : 'owner';
   const newLabel = newRole === 'owner' ? 'Owner' : 'Family';
   if (!confirm(`Change ${userName}'s role to "${newLabel}"?\n\n${newRole === 'viewer' ? userName + ' will only see their own data.' : userName + ' will be able to see all data.'}`)) return;
