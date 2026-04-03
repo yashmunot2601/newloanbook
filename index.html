@@ -382,19 +382,15 @@
       <input type="text" id="reg-name" placeholder="e.g. Rahul"/>
     </div>
     <div class="field">
-      <label>Role</label>
-      <select id="reg-role">
-        <option value="owner">Owner (me - I manage loans)</option>
-        <option value="viewer">Viewer (family - view only)</option>
-      </select>
-    </div>
-    <div class="field">
       <label>PIN (4 digits)</label>
       <input type="password" inputmode="numeric" maxlength="4" id="reg-pin" placeholder="••••"/>
     </div>
     <div class="field">
-      <label>Invite Code (for family)</label>
-      <input type="text" id="reg-code" placeholder="Ask owner for code"/>
+      <label>Invite Code</label>
+      <input type="text" id="reg-code" placeholder="Ask the owner for the code"/>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+      ℹ️ Leave invite code blank if you're the first user (owner).
     </div>
     <button class="btn btn-primary" onclick="doRegister()">Create Account</button>
     <div id="reg-error" class="error-msg"></div>
@@ -844,7 +840,6 @@ async function doLogin() {
 }
 async function doRegister() {
   const name = document.getElementById('reg-name').value.trim();
-  const role = document.getElementById('reg-role').value;
   const pin = document.getElementById('reg-pin').value;
   const code = document.getElementById('reg-code').value.trim().toUpperCase();
   const err = document.getElementById('reg-error');
@@ -853,8 +848,15 @@ async function doRegister() {
   try {
     await loadAllData();
     if (DB.users.find(u => u.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Name already taken.'; return; }
-    if (DB.users.length > 0 && code !== DB.inviteCode) { err.textContent = 'Wrong invite code.'; return; }
-    const newRole = DB.users.length === 0 ? 'owner' : role;
+    // First ever user becomes owner automatically, no invite code needed
+    // Everyone else MUST have invite code and is ALWAYS family (viewer) — no exceptions
+    let newRole;
+    if (DB.users.length === 0) {
+      newRole = 'owner'; // First user = owner, no code needed
+    } else {
+      if (code !== DB.inviteCode) { err.textContent = 'Wrong invite code.'; return; }
+      newRole = 'viewer'; // Everyone else = family, regardless of what they selected
+    }
     const [user] = await dbInsert('lb_users', { name, pin, role: newRole });
     DB.users.push(user);
     err.textContent = '';
@@ -870,8 +872,8 @@ function enterApp() {
   document.getElementById('dash-name').textContent = currentUser.name;
   if (currentUser.role === 'viewer') {
     document.getElementById('fab-btn').style.display = 'none';
-    document.getElementById('dash-subtitle').textContent = 'Viewer mode — view your data only';
-    viewFilter = 'mine'; // viewers always see only their own data
+    document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
+    viewFilter = 'mine';
   } else {
     viewFilter = 'all'; // owners start with all view
   }
@@ -906,20 +908,24 @@ function goBack() { navTo(currentPage === 'detail' ? 'borrowers' : 'home'); }
 function goToSettings() { navTo('settings'); }
 
 // ========== DASHBOARD ==========
+function isOwner() { return currentUser?.role === 'owner'; }
+
 function getFilteredBorrowers() {
-  if (!currentUser) return DB.borrowers;
-  if (currentUser.role !== 'owner' || viewFilter === 'mine') {
-    return DB.borrowers.filter(b => b.owner_id === currentUser.id);
-  }
+  if (!currentUser) return [];
+  // Viewers ALWAYS see only their own data — no exceptions
+  if (!isOwner()) return DB.borrowers.filter(b => b.owner_id === currentUser.id);
+  // Owners can filter
   if (viewFilter === 'all') return DB.borrowers;
-  // specific user filter
+  if (viewFilter === 'mine') return DB.borrowers.filter(b => b.owner_id === currentUser.id);
+  // Filter by any specific user (owner or family)
   return DB.borrowers.filter(b => b.owner_id === viewFilter);
 }
 
 function getFilteredIpeople() {
   const allIP = getAllIpeople();
-  if (!currentUser) return allIP;
-  if (currentUser.role !== 'owner' || viewFilter === 'mine') {
+  if (!currentUser) return [];
+  // Viewers ALWAYS see only their own data — no exceptions
+  if (!isOwner()) {
     return allIP.filter(ip => {
       if (ip.source === 'borrower') {
         const b = DB.borrowers.find(x => x.id === ip.borrowerId);
@@ -929,26 +935,26 @@ function getFilteredIpeople() {
       return p?.owner_id === currentUser.id;
     });
   }
+  // Owner filters
   if (viewFilter === 'all') return allIP;
+  const targetId = viewFilter === 'mine' ? currentUser.id : viewFilter;
   return allIP.filter(ip => {
-    if (ip.source === 'borrower') {
-      const b = DB.borrowers.find(x => x.id === ip.borrowerId);
-      return b?.owner_id === viewFilter;
-    }
-    const p = DB.ipeople.find(x => x.id === ip.id);
-    return p?.owner_id === viewFilter;
+    if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === targetId;
+    return DB.ipeople.find(x => x.id === ip.id)?.owner_id === targetId;
   });
 }
 
 function renderFilterTabs(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (currentUser?.role !== 'owner') { el.style.display = 'none'; return; }
-  const members = DB.users;
-  if (members.length < 2) { el.style.display = 'none'; return; }
+  // Viewers NEVER see filter tabs
+  if (!isOwner()) { el.style.display = 'none'; return; }
+  const otherUsers = DB.users.filter(u => u.id !== currentUser.id);
+  // Only show tabs if there are other users
+  if (otherUsers.length === 0) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
   const tabs = [{ id: 'all', label: 'All' }, { id: 'mine', label: 'My Data' }];
-  DB.users.filter(u => u.id !== currentUser.id).forEach(u => tabs.push({ id: u.id, label: u.name + "'s" }));
+  otherUsers.forEach(u => tabs.push({ id: u.id, label: u.name + "'s" }));
   el.innerHTML = tabs.map(t =>
     `<div class="filter-tab${viewFilter===t.id?' active':''}" onclick="setFilter('${t.id}')">${t.label}</div>`
   ).join('');
@@ -1458,11 +1464,17 @@ function openIDetail(id) {
       <div style="font-size:24px;font-weight:700;color:var(--accent2)">₹${fmt(totalReceived)}</div>
       <div style="font-size:12px;color:var(--danger);margin-top:4px">${pendingMonths.length} month${pendingMonths.length!==1?'s':''} pending · ₹${fmt(pendingMonths.length*exp)}</div>
     </div>
-    ${currentUser?.role==='owner' && ip.source!=='borrower' ? `<div style="display:flex;gap:10px;margin-bottom:16px">
-      <button class="btn btn-secondary" style="flex:1" onclick="openIPersonModal('${ip.id}')">✏️ Edit</button>
-      <button class="btn btn-danger" style="flex:1" onclick="confirmDeleteIP('${ip.id}')">🗑 Delete</button>
-    </div>` : ip.source==='borrower'?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--muted)">Edit this person's details in the <span style="color:var(--accent);cursor:pointer" onclick="openDetail('${ip.borrowerId}')">Loans tab →</span></div>`:''}
-    <div class="section-header"><span class="section-title">Receipt Log</span></div>
+    ${(() => {
+      const isMineIPerson = ip.source === 'iperson' && DB.ipeople.find(x => x.id === ip.id)?.owner_id === currentUser?.id;
+      const canEdit = isOwner() || isMineIPerson;
+      const canDelete = isOwner() || isMineIPerson;
+      if (ip.source === 'borrower') return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--muted)">Edit this person's details in the <span style="color:var(--accent);cursor:pointer" onclick="openDetail('${ip.borrowerId}')">Loans tab →</span></div>`;
+      if (!canEdit) return '';
+      return `<div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn btn-secondary" style="flex:1" onclick="openIPersonModal('${ip.id}')">✏️ Edit</button>
+        ${canDelete ? `<button class="btn btn-danger" style="flex:1" onclick="confirmDeleteIP('${ip.id}')">🗑 Delete</button>` : ''}
+      </div>`;
+    })()}
     <div class="calc-card" style="padding:4px 16px">
       ${received.length===0?'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No receipts yet.<br>Tap ❌ on the grid to mark months.</div>':
         received.sort((a,b)=>b.month.localeCompare(a.month)).map(r=>`
@@ -1566,7 +1578,7 @@ function confirmDeleteIP(id) {
 function renderSettings() {
   if (!currentUser) return;
   document.getElementById('s-username').textContent = currentUser.name;
-  document.getElementById('s-role').textContent = currentUser.role === 'owner' ? 'Owner' : 'Viewer';
+  document.getElementById('s-role').textContent = currentUser.role === 'owner' ? 'Owner' : 'Family';
   document.getElementById('s-invite').textContent = DB.inviteCode;
   if (currentUser.role === 'owner') {
     document.getElementById('owner-settings').style.display = 'block';
@@ -1574,10 +1586,49 @@ function renderSettings() {
     if (DB.users.length === 0) { ml.innerHTML = '<div style="color:var(--muted);font-size:13px">No members yet</div>'; return; }
     ml.innerHTML = DB.users.map(u => `
       <div class="settings-item">
-        <div><div class="s-label">${u.name}</div></div>
-        <div class="tag ${u.role==='owner'?'tag-amber':'tag-green'}">${u.role}</div>
+        <div>
+          <div class="s-label">${u.name}</div>
+          <div class="s-sub">${u.role === 'owner' ? 'Owner — sees all data' : 'Family — sees only their own data'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${u.id !== currentUser.id ? `
+            <div onclick="toggleUserRole('${u.id}','${u.name}','${u.role}')" 
+                 class="tag ${u.role==='owner'?'tag-amber':'tag-green'}" 
+                 style="cursor:pointer" title="Tap to change role">
+              ${u.role === 'owner' ? 'Owner' : 'Family'} ✎
+            </div>
+            <div onclick="confirmDeleteUser('${u.id}','${u.name}')" style="color:var(--danger);cursor:pointer;font-size:20px;line-height:1" title="Delete user">🗑</div>
+          ` : `<div class="tag tag-amber">Owner</div><div style="font-size:11px;color:var(--muted)">(you)</div>`}
+        </div>
       </div>`).join('');
   }
+}
+
+function confirmDeleteUser(userId, userName) {
+  if (!confirm(`Delete user "${userName}"?\n\nThis will remove their account but keep their data. This cannot be undone.`)) return;
+  deleteUser(userId, userName);
+}
+
+async function deleteUser(userId, userName) {
+  try {
+    await dbDelete('lb_users', 'id=eq.' + userId);
+    DB.users = DB.users.filter(u => u.id !== userId);
+    showToast(`✅ ${userName} deleted`);
+    renderSettings();
+  } catch(e) { alert('Error deleting user: ' + e.message); }
+}
+
+async function toggleUserRole(userId, userName, currentRole) {
+  const newRole = currentRole === 'owner' ? 'viewer' : 'owner';
+  const newLabel = newRole === 'owner' ? 'Owner' : 'Family';
+  if (!confirm(`Change ${userName}'s role to "${newLabel}"?\n\n${newRole === 'viewer' ? userName + ' will only see their own data.' : userName + ' will be able to see all data.'}`)) return;
+  try {
+    await dbUpdate('lb_users', userId, { role: newRole });
+    const idx = DB.users.findIndex(u => u.id === userId);
+    if (idx !== -1) DB.users[idx].role = newRole;
+    showToast(`✅ ${userName} is now ${newLabel}`);
+    renderSettings();
+  } catch(e) { alert('Error changing role: ' + e.message); }
 }
 function copyInvite() {
   navigator.clipboard?.writeText(DB.inviteCode).then(() => alert('Invite code copied: ' + DB.inviteCode)).catch(() => alert('Your invite code: ' + DB.inviteCode));
