@@ -712,26 +712,85 @@
 </div>
 
 <script>
+// ========== SUPABASE ==========
+const SUPA_URL = 'https://bzlxrncjcxcuciwqfvpv.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6bHhybmNqY3hjdWNpd3FmdnB2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjQ3NzksImV4cCI6MjA5MDcwMDc3OX0.9DD391S5on2KS-Glj9ldvaJFQ13BXn3zGJd8gtkOUbA';
+
+async function sbFetch(path, options = {}) {
+  const method = options.method || 'GET';
+  const headers = {
+    'apikey': SUPA_KEY,
+    'Authorization': 'Bearer ' + SUPA_KEY,
+    'Content-Type': 'application/json'
+  };
+  if (method !== 'GET') {
+    headers['Prefer'] = options.prefer || 'return=representation';
+  }
+  const res = await fetch(SUPA_URL + '/rest/v1/' + path, {
+    method,
+    headers,
+    body: options.body || undefined
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Supabase error ' + res.status + ': ' + err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
+async function dbSelect(table, query = '') {
+  return sbFetch(table + (query ? '?' + query : ''));
+}
+async function dbInsert(table, data) {
+  return sbFetch(table, { method: 'POST', body: JSON.stringify(data) });
+}
+async function dbUpdate(table, id, data) {
+  return sbFetch(table + '?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) });
+}
+async function dbDelete(table, query) {
+  return sbFetch(table + '?' + query, { method: 'DELETE' });
+}
+
 // ========== STATE ==========
-let DB = JSON.parse(localStorage.getItem('loanbook_db') || 'null') || {
+let DB = {
   users: [],
   borrowers: [],
   payments: [],
-  ipeople: [],       // interest people
-  imonths: [],       // interest monthly receipts
-  inviteCode: Math.random().toString(36).substring(2,8).toUpperCase()
+  ipeople: [],
+  imonths: [],
+  inviteCode: 'LOANBOOK'
 };
-// migrate old DB
-if (!DB.ipeople) DB.ipeople = [];
-if (!DB.imonths) DB.imonths = [];
 let currentUser = null;
 let currentBorrowerId = null;
 let currentPage = 'home';
-let calcType = 'simple';
 let selectedColor = '#e8b86d';
 let payType = 'repay';
 
-function save() { localStorage.setItem('loanbook_db', JSON.stringify(DB)); }
+async function loadAllData() {
+  try {
+    const [users, borrowers, payments, ipeople, imonths, settings] = await Promise.all([
+      dbSelect('lb_users'),
+      dbSelect('lb_borrowers', 'order=created_at.asc'),
+      dbSelect('lb_payments', 'order=date.asc'),
+      dbSelect('lb_ipeople', 'order=created_at.asc'),
+      dbSelect('lb_imonths'),
+      dbSelect('lb_settings')
+    ]);
+    DB.users = users;
+    DB.borrowers = borrowers;
+    DB.payments = payments;
+    DB.ipeople = ipeople;
+    DB.imonths = imonths;
+    DB.inviteCode = settings[0]?.invite_code || 'YASH01';
+  } catch(e) {
+    console.error('loadAllData failed:', e);
+    throw e; // re-throw so login shows real error
+  }
+}
+
+// legacy save() stub — no-op since we save per operation now
+function save() {}
 
 const COLORS = ['#e8b86d','#5bc4a0','#7b9fe8','#e87b9f','#b87be8'];
 
@@ -744,28 +803,51 @@ function switchToLogin() {
   document.getElementById('register-card').style.display = 'none';
   document.getElementById('login-card').style.display = 'block';
 }
-function doLogin() {
+async function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pin = document.getElementById('login-pin').value;
-  const user = DB.users.find(u => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin);
-  if (!user) { document.getElementById('login-error').textContent = 'Name or PIN is incorrect.'; return; }
-  currentUser = user;
-  enterApp();
+  const errEl = document.getElementById('login-error');
+  if (!name || !pin) { errEl.textContent = 'Please enter name and PIN.'; return; }
+  errEl.textContent = 'Connecting...';
+  errEl.style.color = 'var(--muted)';
+  try {
+    await loadAllData();
+    const user = DB.users.find(u => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin);
+    if (!user) {
+      errEl.textContent = 'Name or PIN is incorrect.';
+      errEl.style.color = 'var(--danger)';
+      return;
+    }
+    errEl.textContent = '';
+    currentUser = user;
+    localStorage.setItem('loanbook_current', user.id);
+    enterApp();
+  } catch(e) {
+    errEl.textContent = '⚠️ ' + e.message;
+    errEl.style.color = 'var(--danger)';
+    console.error(e);
+  }
 }
-function doRegister() {
+async function doRegister() {
   const name = document.getElementById('reg-name').value.trim();
   const role = document.getElementById('reg-role').value;
   const pin = document.getElementById('reg-pin').value;
   const code = document.getElementById('reg-code').value.trim().toUpperCase();
   const err = document.getElementById('reg-error');
   if (!name || pin.length !== 4) { err.textContent = 'Please fill all fields with a 4-digit PIN.'; return; }
-  if (DB.users.find(u => u.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Name already taken.'; return; }
-  if (DB.users.length > 0 && role === 'owner' && code !== DB.inviteCode) { err.textContent = 'Wrong invite code for owner.'; return; }
-  if (DB.users.length > 0 && role === 'viewer' && code !== DB.inviteCode) { err.textContent = 'Wrong invite code.'; return; }
-  const user = { id: Date.now().toString(), name, role: DB.users.length === 0 ? 'owner' : role, pin };
-  DB.users.push(user); save();
-  currentUser = user;
-  enterApp();
+  err.textContent = 'Creating account...';
+  try {
+    await loadAllData();
+    if (DB.users.find(u => u.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Name already taken.'; return; }
+    if (DB.users.length > 0 && code !== DB.inviteCode) { err.textContent = 'Wrong invite code.'; return; }
+    const newRole = DB.users.length === 0 ? 'owner' : role;
+    const [user] = await dbInsert('lb_users', { name, pin, role: newRole });
+    DB.users.push(user);
+    err.textContent = '';
+    currentUser = user;
+    localStorage.setItem('loanbook_current', user.id);
+    enterApp();
+  } catch(e) { err.textContent = 'Error: ' + e.message; }
 }
 function enterApp() {
   document.getElementById('auth-screen').style.display = 'none';
@@ -813,46 +895,12 @@ function renderDashboard() {
   });
   const outstanding = totalGiven - totalReturned;
   const grid = document.getElementById('summary-grid');
+  if (!grid) return;
   grid.innerHTML = `
     <div class="summary-card"><div class="label">Total Lent</div><div class="value amber">₹${fmt(totalGiven)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''}</div></div>
     <div class="summary-card"><div class="label">Outstanding</div><div class="value red">₹${fmt(outstanding)}</div><div class="sub">Yet to recover</div></div>
   `;
 
-  // Horizontal scroll - active loans
-  const activeBorrowers = borrowers.filter(b => getBalance(b.id) > 0);
-  const bcont = document.getElementById('dash-borrowers');
-  if (activeBorrowers.length === 0) {
-    bcont.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No active loans</div>';
-  } else {
-    bcont.innerHTML = activeBorrowers.map(b => {
-      const bal = getBalance(b.id);
-      return `<div class="mini-card" onclick="openDetail('${b.id}')">
-        <div class="mini-card-avatar" style="background:${b.color||'#e8b86d'}22;color:${b.color||'#e8b86d'}">${b.name[0].toUpperCase()}</div>
-        <div class="mini-card-name">${b.name}</div>
-        <div class="mini-card-amount" style="color:var(--accent)">₹${fmt(bal)}</div>
-        <div class="mini-card-sub">outstanding</div>
-      </div>`;
-    }).join('');
-  }
-
-  // Horizontal scroll - interest this month
-  const thisMonth = monthKey(new Date());
-  const allIP = getAllIpeople();
-  const icont = document.getElementById('dash-interest');
-  if (allIP.length === 0) {
-    icont.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No interest people yet</div>';
-  } else {
-    icont.innerHTML = allIP.map(ip => {
-      const rec = DB.imonths.find(m => m.pid === ip.id && m.month === thisMonth);
-      const expected = Math.round(ip.amount * ip.rate / 100);
-      return `<div class="mini-card" onclick="openIDetail('${ip.id}')">
-        <div class="mini-card-avatar" style="background:${ip.color||'#5bc4a0'}22;color:${ip.color||'#5bc4a0'}">${ip.name[0].toUpperCase()}</div>
-        <div class="mini-card-name">${ip.name}</div>
-        <div class="mini-card-amount" style="color:${rec?'var(--accent2)':'var(--danger)'}">${rec ? '✓ ₹'+fmt(rec.amount) : '₹'+fmt(expected)}</div>
-        <div class="mini-card-sub">${rec ? 'received' : 'pending'}</div>
-      </div>`;
-    }).join('');
-  }
 }
 
 function renderBorrowers() {
@@ -947,25 +995,32 @@ function confirmDelete(id) {
   document.getElementById('confirm-delete-id').value = id;
   openModal('modal-confirm-delete');
 }
-function deleteBorrower() {
+async function deleteBorrower() {
   const rawId = document.getElementById('confirm-delete-id').value;
-  if (rawId.startsWith('IM:')) {
-    const id = rawId.slice(3);
-    DB.imonths = DB.imonths.filter(m => m.id !== id);
-    save(); closeModal('modal-confirm-delete');
-    if (currentPage === 'idetail') openIDetail(currentBorrowerId);
-    else renderInterestPage();
-    renderDashboard();
-  } else if (rawId.startsWith('IP:')) {
-    const id = rawId.slice(3);
-    DB.ipeople = DB.ipeople.filter(x => x.id !== id);
-    DB.imonths = DB.imonths.filter(m => m.pid !== id);
-    save(); closeModal('modal-confirm-delete'); navTo('interest');
-  } else {
-    DB.borrowers = DB.borrowers.filter(b => b.id !== rawId);
-    DB.payments = DB.payments.filter(p => p.borrowerId !== rawId);
-    save(); closeModal('modal-confirm-delete'); navTo('borrowers');
-  }
+  try {
+    if (rawId.startsWith('IM:')) {
+      const id = rawId.slice(3);
+      await dbDelete('lb_imonths', 'id=eq.' + id);
+      DB.imonths = DB.imonths.filter(m => m.id !== id);
+      closeModal('modal-confirm-delete');
+      if (currentPage === 'idetail') openIDetail(currentBorrowerId);
+      else renderInterestPage();
+      renderDashboard();
+    } else if (rawId.startsWith('IP:')) {
+      const id = rawId.slice(3);
+      await dbDelete('lb_imonths', 'pid=eq.' + id);
+      await dbDelete('lb_ipeople', 'id=eq.' + id);
+      DB.ipeople = DB.ipeople.filter(x => x.id !== id);
+      DB.imonths = DB.imonths.filter(m => m.pid !== id);
+      closeModal('modal-confirm-delete'); navTo('interest');
+    } else {
+      await dbDelete('lb_payments', 'borrower_id=eq.' + rawId);
+      await dbDelete('lb_borrowers', 'id=eq.' + rawId);
+      DB.borrowers = DB.borrowers.filter(b => b.id !== rawId);
+      DB.payments = DB.payments.filter(p => p.borrower_id !== rawId);
+      closeModal('modal-confirm-delete'); navTo('borrowers');
+    }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 function openEditModal(id) {
   const b = DB.borrowers.find(x => x.id === id);
@@ -983,34 +1038,34 @@ function openEditModal(id) {
   });
   openModal('modal-edit-borrower');
 }
-function saveEditBorrower() {
+async function saveEditBorrower() {
   const id = document.getElementById('e-id').value;
   const name = document.getElementById('e-name').value.trim();
   const amount = parseFloat(document.getElementById('e-amount').value);
   if (!name || isNaN(amount)) { alert('Please enter a name and amount.'); return; }
-  const idx = DB.borrowers.findIndex(b => b.id === id);
-  if (idx === -1) return;
-  DB.borrowers[idx] = {
-    ...DB.borrowers[idx],
-    name,
-    amount,
-    rate: parseFloat(document.getElementById('e-rate').value) || 0,
-    date: document.getElementById('e-date').value,
-    notes: document.getElementById('e-notes').value.trim(),
-    color: selectedColor
-  };
-  save();
-  closeModal('modal-edit-borrower');
-  openDetail(id);
+  try {
+    const data = {
+      name, amount,
+      rate: parseFloat(document.getElementById('e-rate').value) || 0,
+      date: document.getElementById('e-date').value,
+      notes: document.getElementById('e-notes').value.trim(),
+      color: selectedColor
+    };
+    await dbUpdate('lb_borrowers', id, data);
+    const idx = DB.borrowers.findIndex(b => b.id === id);
+    if (idx !== -1) DB.borrowers[idx] = { ...DB.borrowers[idx], ...data };
+    closeModal('modal-edit-borrower');
+    openDetail(id);
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ========== HELPERS ==========
 function getGiven(id) {
   const b = DB.borrowers.find(x => x.id === id);
-  const extras = DB.payments.filter(p => p.borrowerId === id && p.type === 'extra').reduce((s,p) => s + p.amount, 0);
+  const extras = DB.payments.filter(p => p.borrower_id === id && p.type === 'extra').reduce((s,p) => s + p.amount, 0);
   return (b?.amount || 0) + extras;
 }
-function getReturned(id) { return DB.payments.filter(p => p.borrowerId === id && p.type === 'repay').reduce((s,p) => s + p.amount, 0); }
+function getReturned(id) { return DB.payments.filter(p => p.borrower_id === id && p.type === 'repay').reduce((s,p) => s + p.amount, 0); }
 function getBalance(id) { return getGiven(id) - getReturned(id); }
 function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}); }
@@ -1061,40 +1116,38 @@ function setPayType(t) {
   document.getElementById('pchip-extra').classList.toggle('active', t==='extra');
 }
 
-function saveBorrower() {
+async function saveBorrower() {
   const name = document.getElementById('b-name').value.trim();
   const amount = parseFloat(document.getElementById('b-amount').value);
   if (!name || isNaN(amount)) { alert('Please enter a name and amount.'); return; }
-  const b = {
-    id: Date.now().toString(),
-    name,
-    amount,
-    rate: parseFloat(document.getElementById('b-rate').value) || 0,
-    date: document.getElementById('b-date').value,
-    notes: document.getElementById('b-notes').value.trim(),
-    color: selectedColor
-  };
-  DB.borrowers.push(b); save();
-  closeModal('modal-borrower');
-  renderDashboard();
-  renderBorrowers();
+  try {
+    const [b] = await dbInsert('lb_borrowers', {
+      name, amount,
+      rate: parseFloat(document.getElementById('b-rate').value) || 0,
+      date: document.getElementById('b-date').value,
+      notes: document.getElementById('b-notes').value.trim(),
+      color: selectedColor
+    });
+    DB.borrowers.push(b);
+    closeModal('modal-borrower');
+    renderDashboard(); renderInterestPage(); renderBorrowers();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
-function savePayment() {
+async function savePayment() {
   const amount = parseFloat(document.getElementById('p-amount').value);
   const date = document.getElementById('p-date').value;
   if (isNaN(amount) || amount <= 0 || !date) { alert('Please enter a valid amount and date.'); return; }
-  DB.payments.push({
-    id: Date.now().toString(),
-    borrowerId: currentBorrowerId,
-    type: payType,
-    amount,
-    date,
-    note: document.getElementById('p-note').value.trim()
-  });
-  save();
-  closeModal('modal-payment');
-  openDetail(currentBorrowerId);
+  try {
+    const [p] = await dbInsert('lb_payments', {
+      borrower_id: currentBorrowerId,
+      type: payType, amount, date,
+      note: document.getElementById('p-note').value.trim()
+    });
+    DB.payments.push(p);
+    closeModal('modal-payment');
+    openDetail(currentBorrowerId);
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ========== INTEREST TRACKER ==========
@@ -1348,21 +1401,27 @@ function openIPersonModal(editId) {
   document.querySelectorAll('#iperson-color-picker .color-dot').forEach(d => d.classList.toggle('selected', d.dataset.c===selectedColor));
   openModal('modal-iperson');
 }
-function saveIPerson() {
+async function saveIPerson() {
   const id = document.getElementById('ip-id').value;
   const name = document.getElementById('ip-name').value.trim();
   const amount = parseFloat(document.getElementById('ip-amount').value);
   const rate = parseFloat(document.getElementById('ip-rate').value);
   if (!name || isNaN(amount) || isNaN(rate)) { alert('Please fill name, amount and rate.'); return; }
   const data = { name, amount, rate,
-    start: document.getElementById('ip-start').value, notes: document.getElementById('ip-notes').value.trim(), color: selectedColor };
-  if (id) {
-    const idx = DB.ipeople.findIndex(x => x.id === id);
-    DB.ipeople[idx] = { ...DB.ipeople[idx], ...data };
-  } else {
-    DB.ipeople.push({ id: Date.now().toString(), ...data });
-  }
-  save(); closeModal('modal-iperson'); renderInterestPage(); renderDashboard();
+    start: document.getElementById('ip-start').value,
+    notes: document.getElementById('ip-notes').value.trim(),
+    color: selectedColor };
+  try {
+    if (id) {
+      await dbUpdate('lb_ipeople', id, data);
+      const idx = DB.ipeople.findIndex(x => x.id === id);
+      DB.ipeople[idx] = { ...DB.ipeople[idx], ...data };
+    } else {
+      const [ip] = await dbInsert('lb_ipeople', data);
+      DB.ipeople.push(ip);
+    }
+    closeModal('modal-iperson'); renderInterestPage(); renderDashboard();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 function openIMonthModal(pid, prefillMonth) {
   const allPeople = getAllIpeople();
@@ -1373,17 +1432,25 @@ function openIMonthModal(pid, prefillMonth) {
   document.getElementById('im-note').value = '';
   openModal('modal-imonth');
 }
-function saveIMonth() {
+async function saveIMonth() {
   const pid = document.getElementById('im-pid').value;
   const month = document.getElementById('im-month').value;
   const amount = parseFloat(document.getElementById('im-amount').value);
   if (!month || isNaN(amount)) { alert('Please fill month and amount.'); return; }
-  DB.imonths = DB.imonths.filter(m => !(m.pid===pid && m.month===month));
-  DB.imonths.push({ id: Date.now().toString(), pid, month, amount, note: document.getElementById('im-note').value.trim() });
-  save(); closeModal('modal-imonth');
-  if (currentPage === 'idetail') openIDetail(currentBorrowerId);
-  else renderInterestPage();
-  renderDashboard();
+  try {
+    // delete existing for same pid+month first
+    const existing = DB.imonths.find(m => m.pid === pid && m.month === month);
+    if (existing) {
+      await dbDelete('lb_imonths', 'id=eq.' + existing.id);
+      DB.imonths = DB.imonths.filter(m => m.id !== existing.id);
+    }
+    const [rec] = await dbInsert('lb_imonths', { pid, month, amount, note: document.getElementById('im-note').value.trim() });
+    DB.imonths.push(rec);
+    closeModal('modal-imonth');
+    if (currentPage === 'idetail') openIDetail(currentBorrowerId);
+    else renderInterestPage();
+    renderDashboard();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 function confirmDeleteIP(id) {
   const ip = DB.ipeople.find(x => x.id === id);
@@ -1426,17 +1493,14 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'loanbook-data-' + new Date().toISOString().slice(0,10) + '.json';
+  a.download = 'loanbook-backup-' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
 }
 
 function exportApp() {
-  // Bake current DB into the HTML so it opens ready with all data
   const html = document.documentElement.outerHTML;
-  const dataScript = `<script>localStorage.setItem('loanbook_db', ${JSON.stringify(JSON.stringify(DB))});<\/script>`;
-  const injected = html.replace('</body>', dataScript + '</body>');
-  const blob = new Blob([injected], { type: 'text/html' });
+  const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1445,30 +1509,40 @@ function exportApp() {
   URL.revokeObjectURL(url);
 }
 
-function importData(event) {
+async function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const imported = JSON.parse(e.target.result);
-      // Validate it looks like LoanBook data
-      if (!imported.users || !imported.borrowers) {
-        showToast('❌ Invalid file — not a LoanBook backup');
-        return;
+      if (!imported.borrowers) { showToast('❌ Invalid backup file'); return; }
+      showToast('⏳ Importing data...');
+      // Insert borrowers
+      for (const b of imported.borrowers) {
+        const { id, created_at, ...data } = b;
+        await dbInsert('lb_borrowers', data).catch(()=>{});
       }
-      DB = imported;
-      if (!DB.ipeople) DB.ipeople = [];
-      if (!DB.imonths) DB.imonths = [];
-      save();
-      showToast('✅ Data imported! Reloading...');
-      setTimeout(() => location.reload(), 1200);
-    } catch(err) {
-      showToast('❌ Could not read file');
-    }
+      // Insert payments
+      for (const p of imported.payments || []) {
+        const { id, created_at, ...data } = p;
+        await dbInsert('lb_payments', data).catch(()=>{});
+      }
+      for (const ip of imported.ipeople || []) {
+        const { id, created_at, ...data } = ip;
+        await dbInsert('lb_ipeople', data).catch(()=>{});
+      }
+      for (const im of imported.imonths || []) {
+        const { id, created_at, ...data } = im;
+        await dbInsert('lb_imonths', data).catch(()=>{});
+      }
+      await loadAllData();
+      showToast('✅ Import done!');
+      renderDashboard(); renderInterestPage();
+    } catch(err) { showToast('❌ Import failed: ' + err.message); }
   };
   reader.readAsText(file);
-  event.target.value = ''; // reset so same file can be re-imported
+  event.target.value = '';
 }
 
 function showToast(msg) {
@@ -1486,11 +1560,14 @@ function showToast(msg) {
 }
 
 // ========== INIT ==========
-const savedUser = localStorage.getItem('loanbook_current');
-if (savedUser) {
-  const u = DB.users.find(x => x.id === savedUser);
-  if (u) { currentUser = u; enterApp(); }
-}
+(async () => {
+  const savedUserId = localStorage.getItem('loanbook_current');
+  if (savedUserId) {
+    await loadAllData();
+    const u = DB.users.find(x => x.id === savedUserId);
+    if (u) { currentUser = u; enterApp(); return; }
+  }
+})();
 </script>
 </body>
 </html>
