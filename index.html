@@ -820,7 +820,7 @@ async function doLogin() {
     }
     errEl.textContent = '';
     currentUser = user;
-    localStorage.setItem('loanbook_current', user.id);
+    localStorage.setItem('loanbook_name', user.name);
     enterApp();
   } catch(e) {
     errEl.textContent = '⚠️ ' + e.message;
@@ -845,7 +845,7 @@ async function doRegister() {
     DB.users.push(user);
     err.textContent = '';
     currentUser = user;
-    localStorage.setItem('loanbook_current', user.id);
+    localStorage.setItem('loanbook_name', user.name);
     enterApp();
   } catch(e) { err.textContent = 'Error: ' + e.message; }
 }
@@ -866,8 +866,11 @@ function signOut() {
   currentUser = null;
   document.getElementById('app').classList.remove('visible');
   document.getElementById('auth-screen').style.display = 'flex';
+  // Keep name prefilled, clear PIN only
+  document.getElementById('login-name').value = localStorage.getItem('loanbook_name') || '';
   document.getElementById('login-pin').value = '';
   document.getElementById('login-error').textContent = '';
+  setTimeout(() => document.getElementById('login-pin').focus(), 100);
 }
 
 function navTo(page) {
@@ -1561,11 +1564,10 @@ function showToast(msg) {
 
 // ========== INIT ==========
 (async () => {
-  const savedUserId = localStorage.getItem('loanbook_current');
-  if (savedUserId) {
-    await loadAllData();
-    const u = DB.users.find(x => x.id === savedUserId);
-    if (u) { currentUser = u; enterApp(); return; }
+  const savedName = localStorage.getItem('loanbook_name');
+  if (savedName) {
+    document.getElementById('login-name').value = savedName;
+    document.getElementById('login-pin').focus();
   }
 })();
 </script>
