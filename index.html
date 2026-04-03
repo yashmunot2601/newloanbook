@@ -343,6 +343,16 @@
   .sgrid-cell.s-nointerest { background: transparent; cursor: default; }
   .sgrid-cell-inner { font-size: 15px; line-height: 1; }
   .sgrid-empty { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; background: var(--surface); }
+
+  /* VIEW FILTER TABS */
+  .filter-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tab {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--muted); white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+  }
+  .filter-tab.active { background: var(--accent); color: #1a1000; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -407,6 +417,7 @@
     <div class="page active" id="page-home">
       <div class="greeting">Hello, <strong id="dash-name">User</strong> 👋</div>
       <div id="dash-subtitle" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+      <div class="filter-tabs" id="home-filter-tabs" style="display:none;margin-top:12px"></div>
       <div class="summary-grid" id="summary-grid"></div>
       <div class="section-header" style="margin-top:4px">
         <span class="section-title">Interest Tracker</span>
@@ -429,6 +440,7 @@
       <div class="section-header" style="margin-top:0">
         <span class="section-title">All Borrowers</span>
       </div>
+      <div class="filter-tabs" id="loans-filter-tabs" style="display:none"></div>
       <div id="borrowers-list"></div>
       <div style="height:10px"></div>
     </div>
@@ -444,6 +456,7 @@
       <div class="section-header" style="margin-top:0">
         <span class="section-title">Interest Tracker</span>
       </div>
+      <div class="filter-tabs" id="interest-filter-tabs" style="display:none;margin-bottom:0"></div>
       <div id="interest-summary-grid" class="summary-grid" style="margin-top:0"></div>
       <div class="summary-grid" style="margin-top:0;margin-bottom:4px" id="interest-cumulative-card"></div>
       <!-- Year selector -->
@@ -766,6 +779,7 @@ let currentBorrowerId = null;
 let currentPage = 'home';
 let selectedColor = '#e8b86d';
 let payType = 'repay';
+let viewFilter = 'all'; // 'all', 'mine', or a specific user id
 
 async function loadAllData() {
   try {
@@ -856,7 +870,10 @@ function enterApp() {
   document.getElementById('dash-name').textContent = currentUser.name;
   if (currentUser.role === 'viewer') {
     document.getElementById('fab-btn').style.display = 'none';
-    document.getElementById('dash-subtitle').textContent = 'Viewer mode — read only';
+    document.getElementById('dash-subtitle').textContent = 'Viewer mode — view your data only';
+    viewFilter = 'mine'; // viewers always see only their own data
+  } else {
+    viewFilter = 'all'; // owners start with all view
   }
   renderDashboard();
   renderInterestPage();
@@ -889,8 +906,63 @@ function goBack() { navTo(currentPage === 'detail' ? 'borrowers' : 'home'); }
 function goToSettings() { navTo('settings'); }
 
 // ========== DASHBOARD ==========
+function getFilteredBorrowers() {
+  if (!currentUser) return DB.borrowers;
+  if (currentUser.role !== 'owner' || viewFilter === 'mine') {
+    return DB.borrowers.filter(b => b.owner_id === currentUser.id);
+  }
+  if (viewFilter === 'all') return DB.borrowers;
+  // specific user filter
+  return DB.borrowers.filter(b => b.owner_id === viewFilter);
+}
+
+function getFilteredIpeople() {
+  const allIP = getAllIpeople();
+  if (!currentUser) return allIP;
+  if (currentUser.role !== 'owner' || viewFilter === 'mine') {
+    return allIP.filter(ip => {
+      if (ip.source === 'borrower') {
+        const b = DB.borrowers.find(x => x.id === ip.borrowerId);
+        return b?.owner_id === currentUser.id;
+      }
+      const p = DB.ipeople.find(x => x.id === ip.id);
+      return p?.owner_id === currentUser.id;
+    });
+  }
+  if (viewFilter === 'all') return allIP;
+  return allIP.filter(ip => {
+    if (ip.source === 'borrower') {
+      const b = DB.borrowers.find(x => x.id === ip.borrowerId);
+      return b?.owner_id === viewFilter;
+    }
+    const p = DB.ipeople.find(x => x.id === ip.id);
+    return p?.owner_id === viewFilter;
+  });
+}
+
+function renderFilterTabs(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (currentUser?.role !== 'owner') { el.style.display = 'none'; return; }
+  const members = DB.users;
+  if (members.length < 2) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const tabs = [{ id: 'all', label: 'All' }, { id: 'mine', label: 'My Data' }];
+  DB.users.filter(u => u.id !== currentUser.id).forEach(u => tabs.push({ id: u.id, label: u.name + "'s" }));
+  el.innerHTML = tabs.map(t =>
+    `<div class="filter-tab${viewFilter===t.id?' active':''}" onclick="setFilter('${t.id}')">${t.label}</div>`
+  ).join('');
+}
+
+function setFilter(f) {
+  viewFilter = f;
+  renderDashboard();
+  renderInterestPage();
+  renderBorrowers();
+}
+
 function renderDashboard() {
-  const borrowers = DB.borrowers;
+  const borrowers = getFilteredBorrowers();
   let totalGiven = 0, totalReturned = 0;
   borrowers.forEach(b => {
     totalGiven += getGiven(b.id);
@@ -899,20 +971,24 @@ function renderDashboard() {
   const outstanding = totalGiven - totalReturned;
   const grid = document.getElementById('summary-grid');
   if (!grid) return;
+  const filterLabel = viewFilter === 'all' ? 'Everyone' : viewFilter === 'mine' ? 'My loans' : (DB.users.find(u=>u.id===viewFilter)?.name || '') + "'s loans";
   grid.innerHTML = `
-    <div class="summary-card"><div class="label">Total Lent</div><div class="value amber">₹${fmt(totalGiven)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''}</div></div>
+    <div class="summary-card"><div class="label">Total Lent</div><div class="value amber">₹${fmt(totalGiven)}</div><div class="sub">${filterLabel} · ${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''}</div></div>
     <div class="summary-card"><div class="label">Outstanding</div><div class="value red">₹${fmt(outstanding)}</div><div class="sub">Yet to recover</div></div>
   `;
-
+  renderFilterTabs('home-filter-tabs');
 }
 
 function renderBorrowers() {
   const cont = document.getElementById('borrowers-list');
-  if (DB.borrowers.length === 0) {
+  renderFilterTabs('loans-filter-tabs');
+  const borrowers = getFilteredBorrowers();
+  if (borrowers.length === 0) {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
     return;
   }
-  cont.innerHTML = DB.borrowers.map(b => borrowerCardHTML(b)).join('');
+  // Show owner tag on cards if viewing all or another user's data
+  cont.innerHTML = borrowers.map(b => borrowerCardHTML(b)).join('');
 }
 
 function borrowerCardHTML(b) {
@@ -921,11 +997,13 @@ function borrowerCardHTML(b) {
   const balance = given - returned;
   const pct = given > 0 ? Math.min(100, Math.round(returned / given * 100)) : 0;
   const monthlyInterest = b.rate ? Math.round(b.amount * b.rate / 100) : 0;
+  const ownerUser = DB.users.find(u => u.id === b.owner_id);
+  const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
   return `<div class="borrower-card" onclick="openDetail('${b.id}')">
     <div class="borrower-card-top">
       <div class="borrower-avatar" style="background:${b.color || '#e8b86d'}22;color:${b.color || '#e8b86d'}">${b.name[0].toUpperCase()}</div>
       <div class="borrower-info">
-        <div class="borrower-name">${b.name}</div>
+        <div class="borrower-name">${b.name}${showOwner ? ` <span style="font-size:10px;background:var(--surface2);padding:2px 6px;border-radius:8px;color:var(--muted);font-weight:500">${ownerUser.name}</span>` : ''}</div>
         <div class="borrower-meta">${b.rate || 0}%/month · since ${formatDate(b.date)}</div>
         ${monthlyInterest ? `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-top:2px">₹${fmt(monthlyInterest)}/month interest</div>` : ''}
       </div>
@@ -966,11 +1044,16 @@ function openDetail(id) {
         <div style="text-align:right"><div style="font-size:15px;font-weight:700;color:var(--text)">₹${fmt(given + interest)}</div><div style="font-size:11px;color:var(--muted)">Total payable</div></div>
       </div>
     </div>` : ''}
-    ${currentUser?.role === 'owner' ? `<div style="display:flex;gap:10px;margin-bottom:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="openPaymentModal()">+ Payment</button>
-      <button class="btn btn-secondary" style="width:46px;padding:0;font-size:18px" onclick="openEditModal('${id}')" title="Edit">✏️</button>
-      <button class="btn btn-danger" style="width:46px;padding:0;font-size:18px" onclick="confirmDelete('${id}')" title="Delete">🗑</button>
-    </div>` : ''}
+    ${(() => {
+      const isOwner = currentUser?.role === 'owner';
+      const isMine = b.owner_id === currentUser?.id;
+      if (!isOwner && !isMine) return '';
+      return `<div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn btn-primary" style="flex:1" onclick="openPaymentModal()">+ Payment</button>
+        ${isOwner || isMine ? `<button class="btn btn-secondary" style="width:46px;padding:0;font-size:18px" onclick="openEditModal('${id}')" title="Edit">✏️</button>` : ''}
+        ${isOwner ? `<button class="btn btn-danger" style="width:46px;padding:0;font-size:18px" onclick="confirmDelete('${id}')" title="Delete">🗑</button>` : ''}
+      </div>`;
+    })()}
     <div class="section-header"><span class="section-title">Payment History</span></div>
     <div class="calc-card" style="padding:4px 16px">
       ${payments.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No payments yet</div>' :
@@ -1129,7 +1212,8 @@ async function saveBorrower() {
       rate: parseFloat(document.getElementById('b-rate').value) || 0,
       date: document.getElementById('b-date').value,
       notes: document.getElementById('b-notes').value.trim(),
-      color: selectedColor
+      color: selectedColor,
+      owner_id: currentUser.id
     });
     DB.borrowers.push(b);
     closeModal('modal-borrower');
@@ -1190,7 +1274,8 @@ function changeYear(delta) {
 function renderInterestPage() {
   const now = new Date();
   const thisMonth = monthKey(now);
-  const allPeople = getAllIpeople();
+  const allPeople = getFilteredIpeople();
+  renderFilterTabs('interest-filter-tabs');
 
   // Summary
   // Last month key
@@ -1272,9 +1357,17 @@ function renderInterestPage() {
     </div>`;
     allPeople.forEach(ip => {
       html += `<div class="sgrid-row">`;
+      const ipOwner = ip.source === 'borrower'
+        ? DB.borrowers.find(b => b.id === ip.borrowerId)?.owner_id
+        : DB.ipeople.find(p => p.id === ip.id)?.owner_id;
+      const ipOwnerName = currentUser?.role === 'owner' && viewFilter !== 'mine' && ipOwner && ipOwner !== currentUser.id
+        ? (DB.users.find(u => u.id === ipOwner)?.name || '') : '';
       html += `<div class="sgrid-name" onclick="openIDetail('${ip.id}')">
         <div class="sgrid-dot" style="background:${ip.color||'#5bc4a0'}"></div>
-        <div class="sgrid-name-text">${ip.name}</div>
+        <div style="overflow:hidden">
+          <div class="sgrid-name-text">${ip.name}</div>
+          ${ipOwnerName ? `<div style="font-size:9px;color:var(--muted)">${ipOwnerName}</div>` : ''}
+        </div>
       </div>`;
       MONTHS.forEach(m => {
         const mk = `${gridYear}-${m}`;
@@ -1312,6 +1405,12 @@ function toggleIMonth(pid, month) {
   const allPeople = getAllIpeople();
   const ip = allPeople.find(x => x.id === pid);
   if (!ip) return;
+  // Check permissions: viewers can only mark their own people
+  if (currentUser?.role !== 'owner') {
+    const isOwnBorrower = ip.source === 'borrower' && DB.borrowers.find(b => b.id === ip.borrowerId)?.owner_id === currentUser?.id;
+    const isOwnIPerson = ip.source === 'iperson' && DB.ipeople.find(p => p.id === ip.id)?.owner_id === currentUser?.id;
+    if (!isOwnBorrower && !isOwnIPerson) { showToast('⚠️ You can only mark your own people'); return; }
+  }
   const existing = DB.imonths.find(m => m.pid === pid && m.month === month);
   if (existing) {
     // Already received — ask to undo
@@ -1413,7 +1512,8 @@ async function saveIPerson() {
   const data = { name, amount, rate,
     start: document.getElementById('ip-start').value,
     notes: document.getElementById('ip-notes').value.trim(),
-    color: selectedColor };
+    color: selectedColor,
+    owner_id: currentUser.id };
   try {
     if (id) {
       await dbUpdate('lb_ipeople', id, data);
