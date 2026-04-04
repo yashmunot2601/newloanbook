@@ -171,11 +171,12 @@
     cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
   }
   .borrower-card:active { transform: scale(0.98); }
-  .borrower-card { transition: transform 0.15s, box-shadow 0.15s; }
-  .borrower-card.is-dragging { opacity: 0.5; transform: scale(0.97); box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 50; }
-  .borrower-card.drag-above { border-top: 3px solid var(--accent); }
-  .borrower-card.drag-below { border-bottom: 3px solid var(--accent); }
-  .drag-handle { width: 32px; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; padding: 0 4px 0 0; }
+  .borrower-card.is-dragging { opacity: 0.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6); pointer-events: none; }
+  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; }
+  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; }
+  .drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
+  .drag-handle:hover { color: var(--accent); }
+  .drag-handle:active { cursor: grabbing; }
   .borrower-card-top { display: flex; align-items: center; gap: 12px; }
   .borrower-avatar {
     width: 42px; height: 42px; border-radius: 12px;
@@ -1018,79 +1019,90 @@ function renderDashboard() {
 }
 
 
-// ========== TOUCH DRAG TO REORDER ==========
-function initDragHandle(handle, borrowerId) {
-  let startY, startScrollTop, dragCard, placeholder, cards, dragIdx, targetIdx;
+// ========== DRAG TO REORDER (mouse + touch) ==========
+function initDragHandle(handle) {
+  const card = handle.closest('.borrower-card');
+  if (!card) return;
 
-  function getCards() {
+  let isDragging = false;
+  let startY, currentY, dragIdx, targetIdx;
+  let rafId;
+
+  function getFilteredCards() {
     return Array.from(document.querySelectorAll('#borrowers-list .borrower-card'));
   }
 
-  function onTouchStart(e) {
-    // Only one finger, on the handle
-    if (e.touches.length !== 1) return;
-    e.stopPropagation();
-
-    dragCard = handle.closest('.borrower-card');
-    if (!dragCard) return;
-
-    startY = e.touches[0].clientY;
-    startScrollTop = document.querySelector('.scroll-area').scrollTop;
-    cards = getCards();
-    dragIdx = cards.indexOf(dragCard);
-    targetIdx = dragIdx;
-
-    dragCard.classList.add('is-dragging');
-
-    // Prevent scroll while dragging
-    document.querySelector('.scroll-area').style.overflow = 'hidden';
+  function getClientY(e) {
+    return e.touches ? e.touches[0].clientY : e.clientY;
   }
 
-  function onTouchMove(e) {
-    if (!dragCard) return;
+  function onStart(e) {
+    if (e.button && e.button !== 0) return; // only left mouse button
     e.preventDefault();
     e.stopPropagation();
+    isDragging = true;
+    startY = getClientY(e);
+    currentY = startY;
 
-    const currentY = e.touches[0].clientY;
-    const dy = currentY - startY;
+    const cards = getFilteredCards();
+    dragIdx = cards.indexOf(card);
+    targetIdx = dragIdx;
 
-    // Visual feedback - move card
-    dragCard.style.transform = `translateY(${dy}px) scale(0.97)`;
+    card.classList.add('is-dragging');
+    document.querySelector('.scroll-area').style.overflow = 'hidden';
 
-    // Find which card we're hovering over
-    cards = getCards();
-    let newTargetIdx = dragIdx;
-    for (let i = 0; i < cards.length; i++) {
-      if (cards[i] === dragCard) continue;
-      const rect = cards[i].getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      if (currentY < midY && i < dragIdx) { newTargetIdx = i; break; }
-      if (currentY > midY && i > dragIdx) { newTargetIdx = i; }
-    }
-
-    // Clear indicators
-    cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
-    if (newTargetIdx !== dragIdx) {
-      cards[newTargetIdx].classList.add(newTargetIdx < dragIdx ? 'drag-above' : 'drag-below');
-    }
-    targetIdx = newTargetIdx;
+    // bind move/end to document so it works even if cursor leaves the handle
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
   }
 
-  function onTouchEnd(e) {
-    if (!dragCard) return;
-    e.stopPropagation();
+  function onMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    currentY = getClientY(e);
 
-    dragCard.classList.remove('is-dragging');
-    dragCard.style.transform = '';
-    document.querySelector('.scroll-area').style.overflow = '';
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const cards = getFilteredCards();
+      let newTarget = dragIdx;
+
+      for (let i = 0; i < cards.length; i++) {
+        if (cards[i] === card) continue;
+        const rect = cards[i].getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (i < dragIdx && currentY < mid) { newTarget = i; break; }
+        if (i > dragIdx && currentY > mid) newTarget = i;
+      }
+
+      cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
+      if (newTarget !== dragIdx) {
+        cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
+      }
+      targetIdx = newTarget;
+    });
+  }
+
+  function onEnd(e) {
+    if (!isDragging) return;
+    isDragging = false;
+
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+
+    card.classList.remove('is-dragging');
     document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above', 'drag-below'));
+    document.querySelector('.scroll-area').style.overflow = '';
 
     if (targetIdx !== dragIdx) {
-      // Reorder in DB.borrowers — find actual indices in full array
-      const fromId = DB.borrowers[dragIdx]?.id;
-      const filteredBorrowers = getFilteredBorrowers();
-      const fromFullIdx = DB.borrowers.findIndex(b => b.id === filteredBorrowers[dragIdx]?.id);
-      const toFullIdx   = DB.borrowers.findIndex(b => b.id === filteredBorrowers[targetIdx]?.id);
+      const filtered = getFilteredBorrowers();
+      const fromId = filtered[dragIdx]?.id;
+      const toId   = filtered[targetIdx]?.id;
+      const fromFullIdx = DB.borrowers.findIndex(b => b.id === fromId);
+      const toFullIdx   = DB.borrowers.findIndex(b => b.id === toId);
       if (fromFullIdx !== -1 && toFullIdx !== -1) {
         const [moved] = DB.borrowers.splice(fromFullIdx, 1);
         DB.borrowers.splice(toFullIdx, 0, moved);
@@ -1100,20 +1112,17 @@ function initDragHandle(handle, borrowerId) {
         saveSortOrder();
       }
     }
-    dragCard = null;
   }
 
-  handle.addEventListener('touchstart', onTouchStart, { passive: false });
-  handle.addEventListener('touchmove', onTouchMove, { passive: false });
-  handle.addEventListener('touchend', onTouchEnd, { passive: false });
+  handle.addEventListener('mousedown', onStart);
+  handle.addEventListener('touchstart', onStart, { passive: false });
 }
 
 async function saveSortOrder() {
   try {
-    // Batch update — fire all in parallel
     await Promise.all(DB.borrowers.map((b, i) => dbUpdate('lb_borrowers', b.id, { sort_order: i + 1 })));
     showToast('✅ Order saved');
-  } catch(e) { showToast('⚠️ Order save failed'); }
+  } catch(e) { showToast('⚠️ Could not save order'); }
 }
 
 function renderBorrowers() {
@@ -1125,10 +1134,9 @@ function renderBorrowers() {
     return;
   }
   cont.innerHTML = borrowers.map(b => borrowerCardHTML(b)).join('');
-  // Wire up touch drag on handles
   borrowers.forEach(b => {
     const handle = document.getElementById('dh-' + b.id);
-    if (handle) initDragHandle(handle, b.id);
+    if (handle) initDragHandle(handle);
   });
 }
 
@@ -1142,7 +1150,7 @@ function borrowerCardHTML(b) {
   const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
   return `<div class="borrower-card" data-id="${b.id}" onclick="openDetail('${b.id}')">
     <div class="borrower-card-top">
-      <div class="drag-handle" id="dh-${b.id}">⠿</div>
+      <div class="drag-handle" id="dh-${b.id}" title="Drag to reorder">⠿</div>
       <div class="borrower-avatar" style="background:${b.color || '#e8b86d'}22;color:${b.color || '#e8b86d'}">${b.name[0].toUpperCase()}</div>
       <div class="borrower-info">
         <div class="borrower-name">${b.name}${showOwner ? ` <span style="font-size:10px;background:var(--surface2);padding:2px 6px;border-radius:8px;color:var(--muted);font-weight:500">${ownerUser.name}</span>` : ''}</div>
@@ -1555,7 +1563,6 @@ function renderInterestPage() {
   });
 }
 
-// Smart touch handler — only fires if user tapped (not scrolled)
 let _touchStartY = 0, _touchStartX = 0, _touchMoved = false;
 function cellTouchStart(event, pid, month) {
   _touchStartY = event.touches[0].clientY;
@@ -1563,9 +1570,8 @@ function cellTouchStart(event, pid, month) {
   _touchMoved = false;
 }
 function cellTouchMove(event) {
-  const dy = Math.abs(event.touches[0].clientY - _touchStartY);
-  const dx = Math.abs(event.touches[0].clientX - _touchStartX);
-  if (dy > 8 || dx > 8) _touchMoved = true;
+  if (Math.abs(event.touches[0].clientY - _touchStartY) > 8 ||
+      Math.abs(event.touches[0].clientX - _touchStartX) > 8) _touchMoved = true;
 }
 function cellTouchEnd(event, pid, month) {
   if (_touchMoved) return;
