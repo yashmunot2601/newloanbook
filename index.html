@@ -171,10 +171,11 @@
     cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
   }
   .borrower-card:active { transform: scale(0.98); }
-  .borrower-card.dragging { opacity: 0.4; transform: scale(0.97); border: 2px dashed var(--accent); }
-  .borrower-card.drag-over { border-top: 3px solid var(--accent); }
-  .drag-handle { color: var(--muted); font-size: 18px; cursor: grab; padding: 4px 8px 4px 0; touch-action: none; flex-shrink: 0; }
-  .drag-handle:active { cursor: grabbing; color: var(--accent); }
+  .borrower-card { transition: transform 0.15s, box-shadow 0.15s; }
+  .borrower-card.is-dragging { opacity: 0.5; transform: scale(0.97); box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 50; }
+  .borrower-card.drag-above { border-top: 3px solid var(--accent); }
+  .borrower-card.drag-below { border-bottom: 3px solid var(--accent); }
+  .drag-handle { width: 32px; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; padding: 0 4px 0 0; }
   .borrower-card-top { display: flex; align-items: center; gap: 12px; }
   .borrower-avatar {
     width: 42px; height: 42px; border-radius: 12px;
@@ -341,7 +342,7 @@
   .sgrid-name:active { opacity: 0.7; }
   .sgrid-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .sgrid-name-text { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .sgrid-cell { flex: 1; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.12s; min-height: 44px; position: relative; }
+  .sgrid-cell { flex: 1; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 48px; position: relative; -webkit-tap-highlight-color: rgba(0,0,0,0); user-select: none; -webkit-user-select: none; }
   .sgrid-cell:last-child { border-right: none; }
   .sgrid-cell.s-received { background: rgba(91,196,160,0.18); }
   .sgrid-cell.s-pending { background: rgba(232,112,109,0.1); }
@@ -1016,48 +1017,103 @@ function renderDashboard() {
   renderFilterTabs('home-filter-tabs');
 }
 
-// ========== DRAG TO REORDER ==========
-let dragSrcId = null;
 
-function dragStart(event) {
-  dragSrcId = event.currentTarget.dataset.id;
-  event.currentTarget.classList.add('dragging');
-  event.dataTransfer.effectAllowed = 'move';
+// ========== TOUCH DRAG TO REORDER ==========
+function initDragHandle(handle, borrowerId) {
+  let startY, startScrollTop, dragCard, placeholder, cards, dragIdx, targetIdx;
+
+  function getCards() {
+    return Array.from(document.querySelectorAll('#borrowers-list .borrower-card'));
+  }
+
+  function onTouchStart(e) {
+    // Only one finger, on the handle
+    if (e.touches.length !== 1) return;
+    e.stopPropagation();
+
+    dragCard = handle.closest('.borrower-card');
+    if (!dragCard) return;
+
+    startY = e.touches[0].clientY;
+    startScrollTop = document.querySelector('.scroll-area').scrollTop;
+    cards = getCards();
+    dragIdx = cards.indexOf(dragCard);
+    targetIdx = dragIdx;
+
+    dragCard.classList.add('is-dragging');
+
+    // Prevent scroll while dragging
+    document.querySelector('.scroll-area').style.overflow = 'hidden';
+  }
+
+  function onTouchMove(e) {
+    if (!dragCard) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentY = e.touches[0].clientY;
+    const dy = currentY - startY;
+
+    // Visual feedback - move card
+    dragCard.style.transform = `translateY(${dy}px) scale(0.97)`;
+
+    // Find which card we're hovering over
+    cards = getCards();
+    let newTargetIdx = dragIdx;
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i] === dragCard) continue;
+      const rect = cards[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (currentY < midY && i < dragIdx) { newTargetIdx = i; break; }
+      if (currentY > midY && i > dragIdx) { newTargetIdx = i; }
+    }
+
+    // Clear indicators
+    cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
+    if (newTargetIdx !== dragIdx) {
+      cards[newTargetIdx].classList.add(newTargetIdx < dragIdx ? 'drag-above' : 'drag-below');
+    }
+    targetIdx = newTargetIdx;
+  }
+
+  function onTouchEnd(e) {
+    if (!dragCard) return;
+    e.stopPropagation();
+
+    dragCard.classList.remove('is-dragging');
+    dragCard.style.transform = '';
+    document.querySelector('.scroll-area').style.overflow = '';
+    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above', 'drag-below'));
+
+    if (targetIdx !== dragIdx) {
+      // Reorder in DB.borrowers — find actual indices in full array
+      const fromId = DB.borrowers[dragIdx]?.id;
+      const filteredBorrowers = getFilteredBorrowers();
+      const fromFullIdx = DB.borrowers.findIndex(b => b.id === filteredBorrowers[dragIdx]?.id);
+      const toFullIdx   = DB.borrowers.findIndex(b => b.id === filteredBorrowers[targetIdx]?.id);
+      if (fromFullIdx !== -1 && toFullIdx !== -1) {
+        const [moved] = DB.borrowers.splice(fromFullIdx, 1);
+        DB.borrowers.splice(toFullIdx, 0, moved);
+        DB.borrowers.forEach((b, i) => b.sort_order = i + 1);
+        renderBorrowers();
+        renderInterestPage();
+        saveSortOrder();
+      }
+    }
+    dragCard = null;
+  }
+
+  handle.addEventListener('touchstart', onTouchStart, { passive: false });
+  handle.addEventListener('touchmove', onTouchMove, { passive: false });
+  handle.addEventListener('touchend', onTouchEnd, { passive: false });
 }
-function dragOver(event) {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-over'));
-  event.currentTarget.classList.add('drag-over');
-}
-function dragDrop(event) {
-  event.preventDefault();
-  const dropId = event.currentTarget.dataset.id;
-  if (!dropId || dropId === dragSrcId) return;
-  // Reorder in DB.borrowers array
-  const fromIdx = DB.borrowers.findIndex(b => b.id === dragSrcId);
-  const toIdx = DB.borrowers.findIndex(b => b.id === dropId);
-  if (fromIdx === -1 || toIdx === -1) return;
-  const [moved] = DB.borrowers.splice(fromIdx, 1);
-  DB.borrowers.splice(toIdx, 0, moved);
-  // Update sort_order for all
-  DB.borrowers.forEach((b, i) => b.sort_order = i + 1);
-  renderBorrowers();
-  renderInterestPage();
-  // Persist to Supabase in background
-  saveSortOrder();
-}
-function dragEnd(event) {
-  document.querySelectorAll('.borrower-card').forEach(c => {
-    c.classList.remove('dragging'); c.classList.remove('drag-over');
-  });
-}
+
 async function saveSortOrder() {
   try {
-    for (const b of DB.borrowers) {
-      await dbUpdate('lb_borrowers', b.id, { sort_order: b.sort_order });
-    }
-  } catch(e) { console.error('Sort order save failed:', e); }
+    // Batch update — fire all in parallel
+    await Promise.all(DB.borrowers.map((b, i) => dbUpdate('lb_borrowers', b.id, { sort_order: i + 1 })));
+    showToast('✅ Order saved');
+  } catch(e) { showToast('⚠️ Order save failed'); }
 }
 
 function renderBorrowers() {
@@ -1068,8 +1124,12 @@ function renderBorrowers() {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
     return;
   }
-  // Show owner tag on cards if viewing all or another user's data
   cont.innerHTML = borrowers.map(b => borrowerCardHTML(b)).join('');
+  // Wire up touch drag on handles
+  borrowers.forEach(b => {
+    const handle = document.getElementById('dh-' + b.id);
+    if (handle) initDragHandle(handle, b.id);
+  });
 }
 
 function borrowerCardHTML(b) {
@@ -1080,9 +1140,9 @@ function borrowerCardHTML(b) {
   const monthlyInterest = b.rate ? Math.round(b.amount * b.rate / 100) : 0;
   const ownerUser = DB.users.find(u => u.id === b.owner_id);
   const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
-  return `<div class="borrower-card" draggable="true" data-id="${b.id}" onclick="openDetail('${b.id}')" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="dragDrop(event)" ondragend="dragEnd(event)">
+  return `<div class="borrower-card" data-id="${b.id}" onclick="openDetail('${b.id}')">
     <div class="borrower-card-top">
-      <div class="drag-handle" onclick="event.stopPropagation()" title="Drag to reorder">⠿</div>
+      <div class="drag-handle" id="dh-${b.id}">⠿</div>
       <div class="borrower-avatar" style="background:${b.color || '#e8b86d'}22;color:${b.color || '#e8b86d'}">${b.name[0].toUpperCase()}</div>
       <div class="borrower-info">
         <div class="borrower-name">${b.name}${showOwner ? ` <span style="font-size:10px;background:var(--surface2);padding:2px 6px;border-radius:8px;color:var(--muted);font-weight:500">${ownerUser.name}</span>` : ''}</div>
@@ -1479,9 +1539,9 @@ function renderInterestPage() {
         }
         const rec = DB.imonths.find(r => r.pid === ip.id && r.month === mk);
         if (rec) {
-          html += `<div class="sgrid-cell s-received" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
+          html += `<div class="sgrid-cell s-received" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
         } else {
-          html += `<div class="sgrid-cell s-pending" onclick="toggleIMonth('${ip.id}','${mk}')" title="Tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
+          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="Tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
         }
       });
       html += `</div>`;
@@ -1493,6 +1553,24 @@ function renderInterestPage() {
   ['interest-grid-wrap', 'home-interest-grid-wrap'].forEach(id => {
     const el = document.getElementById(id); if (el) el.innerHTML = gridHTML;
   });
+}
+
+// Smart touch handler — only fires if user tapped (not scrolled)
+let _touchStartY = 0, _touchStartX = 0, _touchMoved = false;
+function cellTouchStart(event, pid, month) {
+  _touchStartY = event.touches[0].clientY;
+  _touchStartX = event.touches[0].clientX;
+  _touchMoved = false;
+}
+function cellTouchMove(event) {
+  const dy = Math.abs(event.touches[0].clientY - _touchStartY);
+  const dx = Math.abs(event.touches[0].clientX - _touchStartX);
+  if (dy > 8 || dx > 8) _touchMoved = true;
+}
+function cellTouchEnd(event, pid, month) {
+  if (_touchMoved) return;
+  event.preventDefault();
+  toggleIMonth(pid, month);
 }
 
 function toggleIMonth(pid, month) {
