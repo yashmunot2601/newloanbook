@@ -337,7 +337,7 @@
   .sgrid-name:active { opacity: 0.7; }
   .sgrid-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .sgrid-name-text { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .sgrid-cell { flex: 1; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.12s; min-height: 44px; position: relative; }
+  .sgrid-cell { flex: 1; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 48px; position: relative; touch-action: manipulation; -webkit-tap-highlight-color: rgba(0,0,0,0); user-select: none; -webkit-user-select: none; }
   .sgrid-cell:last-child { border-right: none; }
   .sgrid-cell.s-received { background: rgba(91,196,160,0.18); }
   .sgrid-cell.s-pending { background: rgba(232,112,109,0.1); }
@@ -376,7 +376,32 @@
     <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
     <div id="login-error" class="error-msg"></div>
     <div class="auth-switch">No account? <span onclick="switchToRegister()">Create one</span></div>
+    <div class="auth-switch" style="margin-top:8px">Forgot PIN? <span onclick="switchToForgotPin()">Reset it</span></div>
   </div>
+  <div class="auth-card" id="forgot-card" style="display:none">
+    <h2>Reset PIN</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">Enter your name and the app's invite code to set a new PIN.</div>
+    <div class="field">
+      <label>Your Name</label>
+      <input type="text" id="forgot-name" placeholder="Your name" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label>Invite Code</label>
+      <input type="text" id="forgot-code" placeholder="Ask the owner"/>
+    </div>
+    <div class="field">
+      <label>New PIN (4 digits)</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="forgot-pin" placeholder="••••"/>
+    </div>
+    <div class="field">
+      <label>Confirm New PIN</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="forgot-pin2" placeholder="••••"/>
+    </div>
+    <button class="btn btn-primary" onclick="doResetPin()">Set New PIN</button>
+    <div id="forgot-error" class="error-msg"></div>
+    <div class="auth-switch" style="margin-top:12px"><span onclick="switchToLogin()">← Back to Sign In</span></div>
+  </div>
+
   <div class="auth-card" id="register-card" style="display:none">
     <h2>Create account</h2>
     <div class="field">
@@ -832,13 +857,52 @@ function save() {}
 const COLORS = ['#e8b86d','#5bc4a0','#7b9fe8','#e87b9f','#b87be8'];
 
 // ========== AUTH ==========
+function hideAllAuthCards() {
+  ['login-card','register-card','forgot-card'].forEach(id => document.getElementById(id).style.display = 'none');
+}
 function switchToRegister() {
-  document.getElementById('login-card').style.display = 'none';
+  hideAllAuthCards();
   document.getElementById('register-card').style.display = 'block';
 }
 function switchToLogin() {
-  document.getElementById('register-card').style.display = 'none';
+  hideAllAuthCards();
   document.getElementById('login-card').style.display = 'block';
+}
+function switchToForgotPin() {
+  hideAllAuthCards();
+  document.getElementById('forgot-card').style.display = 'block';
+  document.getElementById('forgot-name').value = localStorage.getItem('loanbook_name') || '';
+  document.getElementById('forgot-pin').value = '';
+  document.getElementById('forgot-pin2').value = '';
+  document.getElementById('forgot-error').textContent = '';
+}
+async function doResetPin() {
+  const name = document.getElementById('forgot-name').value.trim();
+  const code = document.getElementById('forgot-code').value.trim().toUpperCase();
+  const pin = document.getElementById('forgot-pin').value;
+  const pin2 = document.getElementById('forgot-pin2').value;
+  const errEl = document.getElementById('forgot-error');
+  if (!name || !code || pin.length !== 4) { errEl.textContent = 'Please fill all fields with a 4-digit PIN.'; return; }
+  if (pin !== pin2) { errEl.textContent = 'PINs do not match.'; return; }
+  errEl.textContent = 'Verifying...';
+  errEl.style.color = 'var(--muted)';
+  try {
+    await loadAllData();
+    if (code !== DB.inviteCode) { errEl.textContent = 'Invite code is incorrect.'; errEl.style.color = 'var(--danger)'; return; }
+    const user = DB.users.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (!user) { errEl.textContent = 'No account found with that name.'; errEl.style.color = 'var(--danger)'; return; }
+    await dbUpdate('lb_users', user.id, { pin });
+    errEl.textContent = '✅ PIN reset! Please sign in.';
+    errEl.style.color = 'var(--accent2)';
+    setTimeout(() => {
+      switchToLogin();
+      document.getElementById('login-name').value = name;
+      document.getElementById('login-pin').focus();
+    }, 1500);
+  } catch(e) {
+    errEl.textContent = '⚠️ ' + e.message;
+    errEl.style.color = 'var(--danger)';
+  }
 }
 async function doLogin() {
   const name = document.getElementById('login-name').value.trim();
@@ -1430,9 +1494,9 @@ function renderInterestPage() {
         }
         const rec = DB.imonths.find(r => r.pid === ip.id && r.month === mk);
         if (rec) {
-          html += `<div class="sgrid-cell s-received" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
+          html += `<div class="sgrid-cell s-received" ontouchstart="handleCellTouch(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
         } else {
-          html += `<div class="sgrid-cell s-pending" onclick="toggleIMonth('${ip.id}','${mk}')" title="Tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
+          html += `<div class="sgrid-cell s-pending" ontouchstart="handleCellTouch(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="Tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
         }
       });
       html += `</div>`;
@@ -1444,6 +1508,11 @@ function renderInterestPage() {
   ['interest-grid-wrap', 'home-interest-grid-wrap'].forEach(id => {
     const el = document.getElementById(id); if (el) el.innerHTML = gridHTML;
   });
+}
+
+function handleCellTouch(event, pid, month) {
+  event.preventDefault(); // prevents 300ms delay and double-firing with onclick
+  toggleIMonth(pid, month);
 }
 
 function toggleIMonth(pid, month) {
