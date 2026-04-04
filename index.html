@@ -452,9 +452,9 @@
       <div class="section-header" style="margin-top:0">
         <span class="section-title">Interest Tracker</span>
       </div>
-      <div class="filter-tabs" id="interest-filter-tabs" style="display:none;margin-bottom:0"></div>
+      <div class="filter-tabs" id="interest-filter-tabs" style="display:none;margin-bottom:12px"></div>
       <div id="interest-summary-grid" class="summary-grid" style="margin-top:0"></div>
-      <div class="summary-grid" style="margin-top:0;margin-bottom:4px" id="interest-cumulative-card"></div>
+      <div class="summary-grid" style="margin-top:0;margin-bottom:8px" id="interest-cumulative-card"></div>
       <!-- Year selector -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
         <div onclick="changeYear(-1)" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--muted)">‹</div>
@@ -876,9 +876,9 @@ function enterApp() {
   } else {
     viewFilter = 'all';
   }
-  document.getElementById('fab-btn').style.display = 'flex'; // always show FAB for all users
-  renderDashboard();
-  renderInterestPage();
+  document.getElementById('fab-btn').style.display = 'flex';
+  // Always go to home page on login regardless of previous page
+  navTo('home');
   renderSettings();
 }
 function signOut() {
