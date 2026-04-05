@@ -445,6 +445,7 @@
         <span class="section-title">All Borrowers</span>
       </div>
       <div class="filter-tabs" id="loans-filter-tabs" style="display:none"></div>
+      <div id="loans-summary-card" style="margin-bottom:12px"></div>
       <div id="borrowers-list"></div>
       <div style="height:10px"></div>
     </div>
@@ -1010,10 +1011,9 @@ function renderDashboard() {
   const outstanding = totalGiven - totalReturned;
   const grid = document.getElementById('summary-grid');
   if (!grid) return;
-  const filterLabel = viewFilter === 'all' ? 'Everyone' : viewFilter === 'mine' ? 'My loans' : (DB.users.find(u=>u.id===viewFilter)?.name || '') + "'s loans";
+  const netLent = totalGiven - totalReturned;
   grid.innerHTML = `
-    <div class="summary-card"><div class="label">Total Lent</div><div class="value amber">₹${fmt(totalGiven)}</div><div class="sub">${filterLabel} · ${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''}</div></div>
-    <div class="summary-card"><div class="label">Outstanding</div><div class="value red">₹${fmt(outstanding)}</div><div class="sub">Yet to recover</div></div>
+    <div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(netLent)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''} · amount given minus repayments</div></div>
   `;
   renderFilterTabs('home-filter-tabs');
 }
@@ -1023,104 +1023,64 @@ function renderDashboard() {
 function initDragHandle(handle) {
   const card = handle.closest('.borrower-card');
   if (!card) return;
-
-  let isDragging = false;
-  let startY, currentY, dragIdx, targetIdx;
-  let rafId;
-
-  function getFilteredCards() {
-    return Array.from(document.querySelectorAll('#borrowers-list .borrower-card'));
-  }
-
-  function getClientY(e) {
-    return e.touches ? e.touches[0].clientY : e.clientY;
-  }
-
+  let isDragging = false, startY, currentY, dragIdx, targetIdx, rafId;
+  function getClientY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+  function getCards() { return Array.from(document.querySelectorAll('#borrowers-list .borrower-card')); }
   function onStart(e) {
-    if (e.button && e.button !== 0) return; // only left mouse button
-    e.preventDefault();
-    e.stopPropagation();
-    isDragging = true;
-    startY = getClientY(e);
-    currentY = startY;
-
-    const cards = getFilteredCards();
-    dragIdx = cards.indexOf(card);
-    targetIdx = dragIdx;
-
+    if (e.button && e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    isDragging = true; startY = currentY = getClientY(e);
+    dragIdx = targetIdx = getCards().indexOf(card);
     card.classList.add('is-dragging');
     document.querySelector('.scroll-area').style.overflow = 'hidden';
-
-    // bind move/end to document so it works even if cursor leaves the handle
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onEnd);
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
   }
-
   function onMove(e) {
     if (!isDragging) return;
-    e.preventDefault();
-    currentY = getClientY(e);
-
+    e.preventDefault(); currentY = getClientY(e);
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
-      const cards = getFilteredCards();
-      let newTarget = dragIdx;
-
+      const cards = getCards(); let newTarget = dragIdx;
       for (let i = 0; i < cards.length; i++) {
         if (cards[i] === card) continue;
-        const rect = cards[i].getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
+        const mid = cards[i].getBoundingClientRect().top + cards[i].getBoundingClientRect().height / 2;
         if (i < dragIdx && currentY < mid) { newTarget = i; break; }
         if (i > dragIdx && currentY > mid) newTarget = i;
       }
-
-      cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
-      if (newTarget !== dragIdx) {
-        cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
-      }
+      cards.forEach(c => c.classList.remove('drag-above','drag-below'));
+      if (newTarget !== dragIdx) cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
       targetIdx = newTarget;
     });
   }
-
   function onEnd(e) {
     if (!isDragging) return;
     isDragging = false;
-
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onEnd);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onEnd);
-
+    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
     card.classList.remove('is-dragging');
-    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above', 'drag-below'));
+    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above','drag-below'));
     document.querySelector('.scroll-area').style.overflow = '';
-
     if (targetIdx !== dragIdx) {
       const filtered = getFilteredBorrowers();
-      const fromId = filtered[dragIdx]?.id;
-      const toId   = filtered[targetIdx]?.id;
-      const fromFullIdx = DB.borrowers.findIndex(b => b.id === fromId);
-      const toFullIdx   = DB.borrowers.findIndex(b => b.id === toId);
-      if (fromFullIdx !== -1 && toFullIdx !== -1) {
-        const [moved] = DB.borrowers.splice(fromFullIdx, 1);
-        DB.borrowers.splice(toFullIdx, 0, moved);
-        DB.borrowers.forEach((b, i) => b.sort_order = i + 1);
-        renderBorrowers();
-        renderInterestPage();
-        saveSortOrder();
+      const fromIdx = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
+      const toIdx   = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [moved] = DB.borrowers.splice(fromIdx, 1);
+        DB.borrowers.splice(toIdx, 0, moved);
+        DB.borrowers.forEach((b,i) => b.sort_order = i+1);
+        renderBorrowers(); renderInterestPage(); saveSortOrder();
       }
     }
   }
-
   handle.addEventListener('mousedown', onStart);
   handle.addEventListener('touchstart', onStart, { passive: false });
 }
-
 async function saveSortOrder() {
   try {
-    await Promise.all(DB.borrowers.map((b, i) => dbUpdate('lb_borrowers', b.id, { sort_order: i + 1 })));
+    await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, { sort_order: i+1 })));
     showToast('✅ Order saved');
   } catch(e) { showToast('⚠️ Could not save order'); }
 }
@@ -1129,15 +1089,20 @@ function renderBorrowers() {
   const cont = document.getElementById('borrowers-list');
   renderFilterTabs('loans-filter-tabs');
   const borrowers = getFilteredBorrowers();
+  const summaryEl = document.getElementById('loans-summary-card');
+  if (summaryEl) {
+    let tGiven = 0, tReturned = 0;
+    borrowers.forEach(b => { tGiven += getGiven(b.id); tReturned += getReturned(b.id); });
+    const net = tGiven - tReturned;
+    summaryEl.innerHTML = borrowers.length === 0 ? '' :
+      `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(net)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
+  }
   if (borrowers.length === 0) {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
     return;
   }
   cont.innerHTML = borrowers.map(b => borrowerCardHTML(b)).join('');
-  borrowers.forEach(b => {
-    const handle = document.getElementById('dh-' + b.id);
-    if (handle) initDragHandle(handle);
-  });
+  borrowers.forEach(b => { const h = document.getElementById('dh-' + b.id); if (h) initDragHandle(h); });
 }
 
 function borrowerCardHTML(b) {
@@ -1563,21 +1528,10 @@ function renderInterestPage() {
   });
 }
 
-let _touchStartY = 0, _touchStartX = 0, _touchMoved = false;
-function cellTouchStart(event, pid, month) {
-  _touchStartY = event.touches[0].clientY;
-  _touchStartX = event.touches[0].clientX;
-  _touchMoved = false;
-}
-function cellTouchMove(event) {
-  if (Math.abs(event.touches[0].clientY - _touchStartY) > 8 ||
-      Math.abs(event.touches[0].clientX - _touchStartX) > 8) _touchMoved = true;
-}
-function cellTouchEnd(event, pid, month) {
-  if (_touchMoved) return;
-  event.preventDefault();
-  toggleIMonth(pid, month);
-}
+let _tY=0,_tX=0,_tMoved=false;
+function cellTouchStart(e,p,m){_tY=e.touches[0].clientY;_tX=e.touches[0].clientX;_tMoved=false;}
+function cellTouchMove(e){if(Math.abs(e.touches[0].clientY-_tY)>8||Math.abs(e.touches[0].clientX-_tX)>8)_tMoved=true;}
+function cellTouchEnd(e,p,m){if(_tMoved)return;e.preventDefault();toggleIMonth(p,m);}
 
 function toggleIMonth(pid, month) {
   // Find person (could be borrower-linked or standalone)
