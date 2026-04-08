@@ -652,6 +652,25 @@
   </div>
 </div>
 
+<!-- EDIT PAYMENT MODAL -->
+<div class="modal-overlay" id="modal-edit-payment">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Edit Payment</h3>
+    <input type="hidden" id="ep-id"/>
+    <div class="chip-row">
+      <div class="chip active" id="epchip-repay" onclick="setEpType('repay')">Repayment Received</div>
+      <div class="chip" id="epchip-extra" onclick="setEpType('extra')">Extra Given</div>
+    </div>
+    <div class="field"><label>Amount (₹)</label><input type="number" id="ep-amount" placeholder="5000"/></div>
+    <div class="field"><label>Date</label><input type="date" id="ep-date"/></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="ep-note" placeholder="e.g. Monthly EMI"/></div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveEditPayment()">Save Changes</button>
+    <button class="btn btn-danger" style="margin-top:10px" onclick="deletePayment()">Delete Payment</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-edit-payment')">Cancel</button>
+  </div>
+</div>
+
 <!-- EDIT BORROWER MODAL -->
 <div class="modal-overlay" id="modal-edit-borrower">
   <div class="modal">
@@ -1035,8 +1054,7 @@ function initDragHandle(handle) {
     document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onEnd);
   }
   function onMove(e) {
-    if (!isDragging) return;
-    e.preventDefault(); currentY = getClientY(e);
+    if (!isDragging) return; e.preventDefault(); currentY = getClientY(e);
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       const cards = getCards(); let newTarget = dragIdx;
@@ -1073,7 +1091,7 @@ function initDragHandle(handle) {
   handle.addEventListener('touchstart', onStart, { passive: false });
 }
 async function saveSortOrder() {
-  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, { sort_order: i+1 }))); showToast('✅ Order saved'); }
+  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, {sort_order: i+1}))); showToast('✅ Order saved'); }
   catch(e) { showToast('⚠️ Could not save order'); }
 }
 
@@ -1081,6 +1099,7 @@ function renderBorrowers() {
   const cont = document.getElementById('borrowers-list');
   renderFilterTabs('loans-filter-tabs');
   const borrowers = getFilteredBorrowers();
+
   const summaryEl = document.getElementById('loans-summary-card');
   if (summaryEl) {
     let tG = 0, tR = 0;
@@ -1088,12 +1107,42 @@ function renderBorrowers() {
     summaryEl.innerHTML = borrowers.length === 0 ? '' :
       `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(tG - tR)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
   }
+
   if (borrowers.length === 0) {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
     return;
   }
-  cont.innerHTML = borrowers.map(b => borrowerCardHTML(b)).join('');
+
+  const active = borrowers.filter(b => getBalance(b.id) > 0);
+  const settled = borrowers.filter(b => getBalance(b.id) <= 0);
+
+  let html = active.map(b => borrowerCardHTML(b)).join('');
+
+  if (settled.length > 0) {
+    const isOpen = sessionStorage.getItem('settled-open') === 'true';
+    html += `<div style="margin-top:20px">
+      <div onclick="toggleSettledSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-top:1px solid var(--border)">
+        <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
+        <span id="settled-chevron" style="color:var(--muted);font-size:16px">${isOpen ? '▲' : '▼'}</span>
+      </div>
+      <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">
+        ${settled.map(b => borrowerCardHTML(b)).join('')}
+      </div>
+    </div>`;
+  }
+
+  cont.innerHTML = html;
   borrowers.forEach(b => { const h = document.getElementById('dh-' + b.id); if (h) initDragHandle(h); });
+}
+
+function toggleSettledSection() {
+  const list = document.getElementById('settled-list');
+  const chev = document.getElementById('settled-chevron');
+  if (!list) return;
+  const isOpen = list.style.display !== 'none';
+  list.style.display = isOpen ? 'none' : 'block';
+  if (chev) chev.textContent = isOpen ? '▼' : '▲';
+  sessionStorage.setItem('settled-open', !isOpen);
 }
 
 function borrowerCardHTML(b) {
@@ -1130,7 +1179,7 @@ function openDetail(id) {
   const returned = getReturned(id);
   const balance = given - returned;
   const interest = calcInterestAmount(b.amount || 0, b.rate || 0, b.date);
-  const payments = DB.payments.filter(p => p.borrowerId === id).sort((a,b) => new Date(b.date) - new Date(a.date));
+  const payments = DB.payments.filter(p => p.borrower_id === id).sort((a,b) => new Date(b.date) - new Date(a.date));
 
   const html = `
     <div class="detail-header">
@@ -1169,7 +1218,10 @@ function openDetail(id) {
             <div class="payment-info type">${p.type==='repay'?'Payment received':'Extra given'}${p.note ? ' · '+p.note : ''}</div>
             <div class="payment-info date">${formatDate(p.date)}</div>
           </div>
-          <div class="payment-amt ${p.type==='repay'?'paid':'given'}">${p.type==='repay'?'+':'-'}₹${fmt(p.amount)}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="payment-amt ${p.type==='repay'?'paid':'given'}">${p.type==='repay'?'+':'-'}₹${fmt(p.amount)}</div>
+            ${currentUser?.role==='owner'||(DB.borrowers.find(x=>x.id===id)?.owner_id===currentUser?.id) ? `<div onclick="openEditPaymentModal('${p.id}')" style="color:var(--muted);cursor:pointer;font-size:14px;padding:4px">✏️</div>` : ''}
+          </div>
         </div>`).join('')}
     </div>
   `;
@@ -1260,21 +1312,76 @@ function getGiven(id) {
 function getReturned(id) { return DB.payments.filter(p => p.borrower_id === id && p.type === 'repay').reduce((s,p) => s + p.amount, 0); }
 function getBalance(id) { return getGiven(id) - getReturned(id); }
 
-// Balance at the START of a given month (YYYY-MM) = original amount minus repayments received BEFORE that month
+// Balance at the START of a given month (YYYY-MM)
+// = original amount + extras before that month - repayments before that month
 function getBalanceAsOfMonth(borrowerId, monthStr) {
   const b = DB.borrowers.find(x => x.id === borrowerId);
   if (!b) return 0;
   const monthStart = new Date(monthStr + '-01');
-  // extras given before this month
   const extras = DB.payments
     .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && new Date(p.date) < monthStart)
     .reduce((s, p) => s + p.amount, 0);
-  // repayments received before this month
   const repaid = DB.payments
     .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && new Date(p.date) < monthStart)
     .reduce((s, p) => s + p.amount, 0);
   return Math.max(0, (b.amount || 0) + extras - repaid);
 }
+
+// Pro-rata interest for a borrower for a specific month (YYYY-MM)
+// If a repayment happens mid-month, interest is only for the days the balance was outstanding
+function getProRataInterest(borrowerId, rate, monthStr) {
+  const [yr, mo] = monthStr.split('-').map(Number);
+  const monthStart = new Date(yr, mo - 1, 1);
+  const monthEnd = new Date(yr, mo, 1); // exclusive
+  const daysInMonth = (monthEnd - monthStart) / (1000 * 60 * 60 * 24);
+
+  // Get all repayments within this month, sorted by date
+  const repaysThisMonth = DB.payments
+    .filter(p => {
+      if (!p.borrower_id || p.type !== 'repay') return false;
+      const d = new Date(p.date);
+      return d >= monthStart && d < monthEnd;
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (repaysThisMonth.length === 0) {
+    // No repayment this month — full month interest on balance at month start
+    const bal = getBalanceAsOfMonth(borrowerId, monthStr);
+    return Math.round(bal * rate / 100);
+  }
+
+  // Pro-rata: calculate interest day by day across segments
+  let totalInterest = 0;
+  let currentBalance = getBalanceAsOfMonth(borrowerId, monthStr);
+  let segmentStart = monthStart;
+
+  for (const payment of repaysThisMonth) {
+    const payDate = new Date(payment.date);
+    const days = (payDate - segmentStart) / (1000 * 60 * 60 * 24);
+    if (days > 0 && currentBalance > 0) {
+      totalInterest += currentBalance * rate / 100 / daysInMonth * days;
+    }
+    currentBalance = Math.max(0, currentBalance - payment.amount);
+    segmentStart = payDate;
+  }
+  // Remaining days after last repayment
+  const remainingDays = (monthEnd - segmentStart) / (1000 * 60 * 60 * 24);
+  if (remainingDays > 0 && currentBalance > 0) {
+    totalInterest += currentBalance * rate / 100 / daysInMonth * remainingDays;
+  }
+  return Math.round(totalInterest);
+}
+
+// Get expected interest for a person for a specific month
+// For borrowers: uses pro-rata if repayment in that month, else full month on opening balance
+// For standalone ipeople: fixed amount (no loan tracking)
+function getExpectedInterest(ip, monthStr) {
+  if (ip.source === 'borrower') {
+    return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
+  }
+  return Math.round(ip.amount * ip.rate / 100);
+}
+
 function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}); }
 function calcInterestAmount(principal, rate, fromDate) {
@@ -1356,6 +1463,50 @@ async function saveBorrower() {
   } catch(e) { alert('Error: ' + e.message); }
 }
 
+let epType = 'repay';
+function setEpType(t) {
+  epType = t;
+  document.getElementById('epchip-repay').classList.toggle('active', t==='repay');
+  document.getElementById('epchip-extra').classList.toggle('active', t==='extra');
+}
+function openEditPaymentModal(paymentId) {
+  const p = DB.payments.find(x => x.id === paymentId);
+  if (!p) return;
+  document.getElementById('ep-id').value = paymentId;
+  document.getElementById('ep-amount').value = p.amount;
+  document.getElementById('ep-date').value = p.date;
+  document.getElementById('ep-note').value = p.note || '';
+  epType = p.type || 'repay';
+  document.getElementById('epchip-repay').classList.toggle('active', epType==='repay');
+  document.getElementById('epchip-extra').classList.toggle('active', epType==='extra');
+  openModal('modal-edit-payment');
+}
+async function saveEditPayment() {
+  const id = document.getElementById('ep-id').value;
+  const amount = parseFloat(document.getElementById('ep-amount').value);
+  const date = document.getElementById('ep-date').value;
+  if (isNaN(amount) || amount <= 0 || !date) { alert('Please enter a valid amount and date.'); return; }
+  try {
+    const data = { amount, date, type: epType, note: document.getElementById('ep-note').value.trim() };
+    await dbUpdate('lb_payments', id, data);
+    const idx = DB.payments.findIndex(x => x.id === id);
+    if (idx !== -1) DB.payments[idx] = { ...DB.payments[idx], ...data };
+    closeModal('modal-edit-payment');
+    openDetail(currentBorrowerId);
+    renderDashboard(); renderInterestPage();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+async function deletePayment() {
+  const id = document.getElementById('ep-id').value;
+  try {
+    await dbDelete('lb_payments', 'id=eq.' + id);
+    DB.payments = DB.payments.filter(p => p.id !== id);
+    closeModal('modal-edit-payment');
+    openDetail(currentBorrowerId);
+    renderDashboard(); renderInterestPage();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
 async function savePayment() {
   const amount = parseAmount(document.getElementById('p-amount').value);
   const date = document.getElementById('p-date').value;
@@ -1390,8 +1541,8 @@ function getAllIpeople() {
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
-      amount: b.amount,        // original amount (used for display)
-      rate: b.rate,
+      amount: b.amount,
+      rate: b.rate,   // already monthly %
       start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
       color: b.color || '#e8b86d',
       source: 'borrower',
@@ -1399,17 +1550,6 @@ function getAllIpeople() {
     }));
   const standalone = DB.ipeople.map(ip => ({ ...ip, source: 'iperson' }));
   return [...fromBorrowers, ...standalone];
-}
-
-// Get expected interest for a person for a specific month
-// For borrowers: uses balance at start of that month (accounts for repayments)
-// For standalone ipeople: uses fixed amount
-function getExpectedInterest(ip, monthStr) {
-  if (ip.source === 'borrower') {
-    const bal = getBalanceAsOfMonth(ip.borrowerId, monthStr);
-    return Math.round(bal * ip.rate / 100);
-  }
-  return Math.round(ip.amount * ip.rate / 100);
 }
 
 function changeYear(delta) {
@@ -1433,7 +1573,7 @@ function renderInterestPage() {
   allPeople.forEach(ip => {
     const ipStart = ip.start || '2026-01';
     if (lastMonth < ipStart) return;
-    const exp = getExpectedInterest(ip, lastMonth); // uses balance at start of last month
+    const exp = getExpectedInterest(ip, lastMonth);
     const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
     totalExpected += exp;
     if (rec) totalReceived += rec.amount; else pendingCount++;
@@ -1449,29 +1589,28 @@ function renderInterestPage() {
     const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1);
     while (cur < cumulativeCutoff) {
       const mk = monthKey(cur);
-      const exp = getExpectedInterest(ip, mk); // balance at start of each specific month
+      const exp = getExpectedInterest(ip, mk);
       const rec = DB.imonths.find(m => m.pid === ip.id && m.month === mk);
       if (!rec) cumulativePending += exp;
       cur.setMonth(cur.getMonth() + 1);
     }
   });
 
-  // Next month expected (current month's interest, collected next month)
+  // Next month expected (current month pro-rata interest, collected next month)
   const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
   const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
   let totalExpectedNext = 0;
   allPeople.forEach(ip => {
     const ipStart = ip.start || '2026-01';
     if (thisMonth < ipStart) return;
-    totalExpectedNext += getExpectedInterest(ip, thisMonth); // balance at start of current month
+    totalExpectedNext += getExpectedInterest(ip, thisMonth);
   });
 
   const summaryHTML = `
     <div class="summary-card"><div class="label">Expected This Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">Collect in ${now.toLocaleDateString('en-IN',{month:'short'})} · for ${lastMonthLabel}</div></div>
     <div class="summary-card"><div class="label">Expected Next Month</div><div class="value amber" style="opacity:0.75">₹${fmt(totalExpectedNext)}</div><div class="sub">Collect in ${nextCollectLabel} · for ${nextMonthLabel}</div></div>
     <div class="summary-card"><div class="label">Received</div><div class="value green">₹${fmt(totalReceived)}</div><div class="sub">${lastMonthLabel}</div></div>
-    <div class="summary-card"><div class="label">Pending</div><div class="value red">₹${fmt(totalExpected - totalReceived)}</div><div class="sub">${lastMonthLabel}</div></div>
-    <div class="summary-card"><div class="label">Not Paid</div><div class="value red">${pendingCount}</div><div class="sub">${lastMonthLabel}</div></div>
+    <div class="summary-card"><div class="label">Pending</div><div class="value red">₹${fmt(totalExpected - totalReceived)}</div><div class="sub">${lastMonthLabel} · <span style="font-size:10px">${pendingCount} people not paid</span></div></div>
   `;
   const cumulativeHTML = cumulativePending > 0
     ? `<div class="summary-card" style="grid-column:1/-1;background:rgba(232,112,109,0.08);border-color:rgba(232,112,109,0.25)">
@@ -1544,7 +1683,7 @@ function renderInterestPage() {
           html += `<div class="sgrid-cell s-received" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
         } else {
           const cellExp = getExpectedInterest(ip, mk);
-          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(cellExp)} expected · tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
+          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(cellExp)} expected · tap to mark"><div class="sgrid-cell-inner">❌</div></div>`;
         }
       });
       html += `</div>`;
@@ -1591,8 +1730,8 @@ function openIDetail(id) {
   const allPeople = getAllIpeople();
   const ip = allPeople.find(x => x.id === id);
   if (!ip) return;
-  const exp = getExpectedInterest(ip, monthKey(now)); // interest based on current balance
   const now = new Date();
+  const exp = getExpectedInterest(ip, monthKey(now));
   const start = new Date((ip.start || monthKey(now)) + '-01');
   const months = [];
   let cur = new Date(start);
