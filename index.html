@@ -662,9 +662,9 @@
       <div class="chip active" id="epchip-repay" onclick="setEpType('repay')">Repayment Received</div>
       <div class="chip" id="epchip-extra" onclick="setEpType('extra')">Extra Given</div>
     </div>
-    <div class="field"><label>Amount (₹)</label><input type="number" id="ep-amount" placeholder="5000"/></div>
+    <div class="field"><label>Amount (₹)</label><input type="number" id="ep-amount"/></div>
     <div class="field"><label>Date</label><input type="date" id="ep-date"/></div>
-    <div class="field"><label>Note (optional)</label><input type="text" id="ep-note" placeholder="e.g. Monthly EMI"/></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="ep-note"/></div>
     <button class="btn btn-primary" style="margin-top:8px" onclick="saveEditPayment()">Save Changes</button>
     <button class="btn btn-danger" style="margin-top:10px" onclick="deletePayment()">Delete Payment</button>
     <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-edit-payment')">Cancel</button>
@@ -1099,7 +1099,6 @@ function renderBorrowers() {
   const cont = document.getElementById('borrowers-list');
   renderFilterTabs('loans-filter-tabs');
   const borrowers = getFilteredBorrowers();
-
   const summaryEl = document.getElementById('loans-summary-card');
   if (summaryEl) {
     let tG = 0, tR = 0;
@@ -1107,17 +1106,13 @@ function renderBorrowers() {
     summaryEl.innerHTML = borrowers.length === 0 ? '' :
       `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(tG - tR)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
   }
-
   if (borrowers.length === 0) {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
     return;
   }
-
   const active = borrowers.filter(b => getBalance(b.id) > 0);
   const settled = borrowers.filter(b => getBalance(b.id) <= 0);
-
   let html = active.map(b => borrowerCardHTML(b)).join('');
-
   if (settled.length > 0) {
     const isOpen = sessionStorage.getItem('settled-open') === 'true';
     html += `<div style="margin-top:20px">
@@ -1125,16 +1120,12 @@ function renderBorrowers() {
         <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
         <span id="settled-chevron" style="color:var(--muted);font-size:16px">${isOpen ? '▲' : '▼'}</span>
       </div>
-      <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">
-        ${settled.map(b => borrowerCardHTML(b)).join('')}
-      </div>
+      <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">${settled.map(b => borrowerCardHTML(b)).join('')}</div>
     </div>`;
   }
-
   cont.innerHTML = html;
   borrowers.forEach(b => { const h = document.getElementById('dh-' + b.id); if (h) initDragHandle(h); });
 }
-
 function toggleSettledSection() {
   const list = document.getElementById('settled-list');
   const chev = document.getElementById('settled-chevron');
@@ -1220,7 +1211,7 @@ function openDetail(id) {
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <div class="payment-amt ${p.type==='repay'?'paid':'given'}">${p.type==='repay'?'+':'-'}₹${fmt(p.amount)}</div>
-            ${currentUser?.role==='owner'||(DB.borrowers.find(x=>x.id===id)?.owner_id===currentUser?.id) ? `<div onclick="openEditPaymentModal('${p.id}')" style="color:var(--muted);cursor:pointer;font-size:14px;padding:4px">✏️</div>` : ''}
+            <div onclick="openEditPaymentModal('${p.id}')" style="color:var(--muted);cursor:pointer;font-size:14px;padding:4px" title="Edit">✏️</div>
           </div>
         </div>`).join('')}
     </div>
@@ -1313,7 +1304,6 @@ function getReturned(id) { return DB.payments.filter(p => p.borrower_id === id &
 function getBalance(id) { return getGiven(id) - getReturned(id); }
 
 // Balance at the START of a given month (YYYY-MM)
-// = original amount + extras before that month - repayments before that month
 function getBalanceAsOfMonth(borrowerId, monthStr) {
   const b = DB.borrowers.find(x => x.id === borrowerId);
   if (!b) return 0;
@@ -1327,32 +1317,32 @@ function getBalanceAsOfMonth(borrowerId, monthStr) {
   return Math.max(0, (b.amount || 0) + extras - repaid);
 }
 
-// Pro-rata interest for a borrower for a specific month (YYYY-MM)
-// If a repayment happens mid-month, interest is only for the days the balance was outstanding
+// Pro-rata interest for a specific borrower for a specific month
 function getProRataInterest(borrowerId, rate, monthStr) {
   const [yr, mo] = monthStr.split('-').map(Number);
   const monthStart = new Date(yr, mo - 1, 1);
-  const monthEnd = new Date(yr, mo, 1); // exclusive
+  const monthEnd = new Date(yr, mo, 1);
   const daysInMonth = (monthEnd - monthStart) / (1000 * 60 * 60 * 24);
 
-  // Get all repayments within this month, sorted by date
+  // Only repayments for THIS borrower within this month — the bug fix
   const repaysThisMonth = DB.payments
     .filter(p => {
-      if (!p.borrower_id || p.type !== 'repay') return false;
+      if (p.borrower_id !== borrowerId || p.type !== 'repay') return false;
       const d = new Date(p.date);
       return d >= monthStart && d < monthEnd;
     })
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
+  const openingBalance = getBalanceAsOfMonth(borrowerId, monthStr);
+
   if (repaysThisMonth.length === 0) {
-    // No repayment this month — full month interest on balance at month start
-    const bal = getBalanceAsOfMonth(borrowerId, monthStr);
-    return Math.round(bal * rate / 100);
+    // No repayment this month — full month interest on opening balance
+    return Math.round(openingBalance * rate / 100);
   }
 
-  // Pro-rata: calculate interest day by day across segments
+  // Pro-rata: calculate interest for each segment between repayments
   let totalInterest = 0;
-  let currentBalance = getBalanceAsOfMonth(borrowerId, monthStr);
+  let currentBalance = openingBalance;
   let segmentStart = monthStart;
 
   for (const payment of repaysThisMonth) {
@@ -1364,7 +1354,7 @@ function getProRataInterest(borrowerId, rate, monthStr) {
     currentBalance = Math.max(0, currentBalance - payment.amount);
     segmentStart = payDate;
   }
-  // Remaining days after last repayment
+  // Remaining days after last repayment to end of month
   const remainingDays = (monthEnd - segmentStart) / (1000 * 60 * 60 * 24);
   if (remainingDays > 0 && currentBalance > 0) {
     totalInterest += currentBalance * rate / 100 / daysInMonth * remainingDays;
@@ -1373,12 +1363,11 @@ function getProRataInterest(borrowerId, rate, monthStr) {
 }
 
 // Get expected interest for a person for a specific month
-// For borrowers: uses pro-rata if repayment in that month, else full month on opening balance
-// For standalone ipeople: fixed amount (no loan tracking)
 function getExpectedInterest(ip, monthStr) {
   if (ip.source === 'borrower') {
     return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
   }
+  // Standalone ipeople: fixed principal, no repayment tracking
   return Math.round(ip.amount * ip.rate / 100);
 }
 
@@ -1572,7 +1561,7 @@ function renderInterestPage() {
   let totalExpected = 0, totalReceived = 0, pendingCount = 0;
   allPeople.forEach(ip => {
     const ipStart = ip.start || '2026-01';
-    if (lastMonth < ipStart) return;
+    if (lastMonth < ipStart) return; // person hadn't started yet in last month — skip
     const exp = getExpectedInterest(ip, lastMonth);
     const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
     totalExpected += exp;
@@ -1586,7 +1575,7 @@ function renderInterestPage() {
     const ipStart = ip.start || CUMULATIVE_START;
     const rangeStart = ipStart > CUMULATIVE_START ? ipStart : CUMULATIVE_START;
     let cur = new Date(rangeStart + '-01');
-    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
     while (cur < cumulativeCutoff) {
       const mk = monthKey(cur);
       const exp = getExpectedInterest(ip, mk);
@@ -1596,13 +1585,12 @@ function renderInterestPage() {
     }
   });
 
-  // Next month expected (current month pro-rata interest, collected next month)
+  // Next month = current month's pro-rata interest (collected next month)
   const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
   const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
   let totalExpectedNext = 0;
   allPeople.forEach(ip => {
-    const ipStart = ip.start || '2026-01';
-    if (thisMonth < ipStart) return;
+    if (thisMonth < (ip.start || '2026-01')) return;
     totalExpectedNext += getExpectedInterest(ip, thisMonth);
   });
 
