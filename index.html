@@ -1011,15 +1011,13 @@ function renderDashboard() {
   const outstanding = totalGiven - totalReturned;
   const grid = document.getElementById('summary-grid');
   if (!grid) return;
-  const netLent = totalGiven - totalReturned;
   grid.innerHTML = `
-    <div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(netLent)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''} · amount given minus repayments</div></div>
+    <div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(totalGiven - totalReturned)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''} · amount given minus repayments</div></div>
   `;
   renderFilterTabs('home-filter-tabs');
 }
 
 
-// ========== DRAG TO REORDER (mouse + touch) ==========
 function initDragHandle(handle) {
   const card = handle.closest('.borrower-card');
   if (!card) return;
@@ -1033,10 +1031,8 @@ function initDragHandle(handle) {
     dragIdx = targetIdx = getCards().indexOf(card);
     card.classList.add('is-dragging');
     document.querySelector('.scroll-area').style.overflow = 'hidden';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onEnd);
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onEnd);
   }
   function onMove(e) {
     if (!isDragging) return;
@@ -1046,7 +1042,7 @@ function initDragHandle(handle) {
       const cards = getCards(); let newTarget = dragIdx;
       for (let i = 0; i < cards.length; i++) {
         if (cards[i] === card) continue;
-        const mid = cards[i].getBoundingClientRect().top + cards[i].getBoundingClientRect().height / 2;
+        const r = cards[i].getBoundingClientRect(), mid = r.top + r.height / 2;
         if (i < dragIdx && currentY < mid) { newTarget = i; break; }
         if (i > dragIdx && currentY > mid) newTarget = i;
       }
@@ -1056,8 +1052,7 @@ function initDragHandle(handle) {
     });
   }
   function onEnd(e) {
-    if (!isDragging) return;
-    isDragging = false;
+    if (!isDragging) return; isDragging = false;
     document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
     document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
     card.classList.remove('is-dragging');
@@ -1065,11 +1060,10 @@ function initDragHandle(handle) {
     document.querySelector('.scroll-area').style.overflow = '';
     if (targetIdx !== dragIdx) {
       const filtered = getFilteredBorrowers();
-      const fromIdx = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
-      const toIdx   = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
-      if (fromIdx !== -1 && toIdx !== -1) {
-        const [moved] = DB.borrowers.splice(fromIdx, 1);
-        DB.borrowers.splice(toIdx, 0, moved);
+      const fi = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
+      const ti = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
+      if (fi !== -1 && ti !== -1) {
+        const [m] = DB.borrowers.splice(fi, 1); DB.borrowers.splice(ti, 0, m);
         DB.borrowers.forEach((b,i) => b.sort_order = i+1);
         renderBorrowers(); renderInterestPage(); saveSortOrder();
       }
@@ -1079,10 +1073,8 @@ function initDragHandle(handle) {
   handle.addEventListener('touchstart', onStart, { passive: false });
 }
 async function saveSortOrder() {
-  try {
-    await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, { sort_order: i+1 })));
-    showToast('✅ Order saved');
-  } catch(e) { showToast('⚠️ Could not save order'); }
+  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, { sort_order: i+1 }))); showToast('✅ Order saved'); }
+  catch(e) { showToast('⚠️ Could not save order'); }
 }
 
 function renderBorrowers() {
@@ -1091,11 +1083,10 @@ function renderBorrowers() {
   const borrowers = getFilteredBorrowers();
   const summaryEl = document.getElementById('loans-summary-card');
   if (summaryEl) {
-    let tGiven = 0, tReturned = 0;
-    borrowers.forEach(b => { tGiven += getGiven(b.id); tReturned += getReturned(b.id); });
-    const net = tGiven - tReturned;
+    let tG = 0, tR = 0;
+    borrowers.forEach(b => { tG += getGiven(b.id); tR += getReturned(b.id); });
     summaryEl.innerHTML = borrowers.length === 0 ? '' :
-      `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(net)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
+      `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(tG - tR)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
   }
   if (borrowers.length === 0) {
     cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
@@ -1268,6 +1259,22 @@ function getGiven(id) {
 }
 function getReturned(id) { return DB.payments.filter(p => p.borrower_id === id && p.type === 'repay').reduce((s,p) => s + p.amount, 0); }
 function getBalance(id) { return getGiven(id) - getReturned(id); }
+
+// Balance at the START of a given month (YYYY-MM) = original amount minus repayments received BEFORE that month
+function getBalanceAsOfMonth(borrowerId, monthStr) {
+  const b = DB.borrowers.find(x => x.id === borrowerId);
+  if (!b) return 0;
+  const monthStart = new Date(monthStr + '-01');
+  // extras given before this month
+  const extras = DB.payments
+    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && new Date(p.date) < monthStart)
+    .reduce((s, p) => s + p.amount, 0);
+  // repayments received before this month
+  const repaid = DB.payments
+    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && new Date(p.date) < monthStart)
+    .reduce((s, p) => s + p.amount, 0);
+  return Math.max(0, (b.amount || 0) + extras - repaid);
+}
 function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}); }
 function calcInterestAmount(principal, rate, fromDate) {
@@ -1383,8 +1390,8 @@ function getAllIpeople() {
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
-      amount: b.amount,
-      rate: b.rate,   // already monthly %
+      amount: b.amount,        // original amount (used for display)
+      rate: b.rate,
       start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
       color: b.color || '#e8b86d',
       source: 'borrower',
@@ -1392,6 +1399,17 @@ function getAllIpeople() {
     }));
   const standalone = DB.ipeople.map(ip => ({ ...ip, source: 'iperson' }));
   return [...fromBorrowers, ...standalone];
+}
+
+// Get expected interest for a person for a specific month
+// For borrowers: uses balance at start of that month (accounts for repayments)
+// For standalone ipeople: uses fixed amount
+function getExpectedInterest(ip, monthStr) {
+  if (ip.source === 'borrower') {
+    const bal = getBalanceAsOfMonth(ip.borrowerId, monthStr);
+    return Math.round(bal * ip.rate / 100);
+  }
+  return Math.round(ip.amount * ip.rate / 100);
 }
 
 function changeYear(delta) {
@@ -1414,8 +1432,8 @@ function renderInterestPage() {
   let totalExpected = 0, totalReceived = 0, pendingCount = 0;
   allPeople.forEach(ip => {
     const ipStart = ip.start || '2026-01';
-    if (lastMonth < ipStart) return; // person hadn't started yet in last month — skip
-    const exp = Math.round(ip.amount * ip.rate / 100);
+    if (lastMonth < ipStart) return;
+    const exp = getExpectedInterest(ip, lastMonth); // uses balance at start of last month
     const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
     totalExpected += exp;
     if (rec) totalReceived += rec.amount; else pendingCount++;
@@ -1425,21 +1443,32 @@ function renderInterestPage() {
   const CUMULATIVE_START = '2026-01';
   let cumulativePending = 0;
   allPeople.forEach(ip => {
-    const exp = Math.round(ip.amount * ip.rate / 100);
     const ipStart = ip.start || CUMULATIVE_START;
     const rangeStart = ipStart > CUMULATIVE_START ? ipStart : CUMULATIVE_START;
     let cur = new Date(rangeStart + '-01');
-    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
+    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1);
     while (cur < cumulativeCutoff) {
       const mk = monthKey(cur);
+      const exp = getExpectedInterest(ip, mk); // balance at start of each specific month
       const rec = DB.imonths.find(m => m.pid === ip.id && m.month === mk);
       if (!rec) cumulativePending += exp;
       cur.setMonth(cur.getMonth() + 1);
     }
   });
 
+  // Next month expected (current month's interest, collected next month)
+  const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
+  const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
+  let totalExpectedNext = 0;
+  allPeople.forEach(ip => {
+    const ipStart = ip.start || '2026-01';
+    if (thisMonth < ipStart) return;
+    totalExpectedNext += getExpectedInterest(ip, thisMonth); // balance at start of current month
+  });
+
   const summaryHTML = `
-    <div class="summary-card"><div class="label">Expected/Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">${allPeople.length} people</div></div>
+    <div class="summary-card"><div class="label">Expected This Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">Collect in ${now.toLocaleDateString('en-IN',{month:'short'})} · for ${lastMonthLabel}</div></div>
+    <div class="summary-card"><div class="label">Expected Next Month</div><div class="value amber" style="opacity:0.75">₹${fmt(totalExpectedNext)}</div><div class="sub">Collect in ${nextCollectLabel} · for ${nextMonthLabel}</div></div>
     <div class="summary-card"><div class="label">Received</div><div class="value green">₹${fmt(totalReceived)}</div><div class="sub">${lastMonthLabel}</div></div>
     <div class="summary-card"><div class="label">Pending</div><div class="value red">₹${fmt(totalExpected - totalReceived)}</div><div class="sub">${lastMonthLabel}</div></div>
     <div class="summary-card"><div class="label">Not Paid</div><div class="value red">${pendingCount}</div><div class="sub">${lastMonthLabel}</div></div>
@@ -1514,7 +1543,8 @@ function renderInterestPage() {
         if (rec) {
           html += `<div class="sgrid-cell s-received" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
         } else {
-          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="Tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
+          const cellExp = getExpectedInterest(ip, mk);
+          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(cellExp)} expected · tap to mark received"><div class="sgrid-cell-inner">❌</div></div>`;
         }
       });
       html += `</div>`;
@@ -1528,10 +1558,10 @@ function renderInterestPage() {
   });
 }
 
-let _tY=0,_tX=0,_tMoved=false;
-function cellTouchStart(e,p,m){_tY=e.touches[0].clientY;_tX=e.touches[0].clientX;_tMoved=false;}
-function cellTouchMove(e){if(Math.abs(e.touches[0].clientY-_tY)>8||Math.abs(e.touches[0].clientX-_tX)>8)_tMoved=true;}
-function cellTouchEnd(e,p,m){if(_tMoved)return;e.preventDefault();toggleIMonth(p,m);}
+let _tY=0,_tX=0,_tM=false;
+function cellTouchStart(e,p,m){_tY=e.touches[0].clientY;_tX=e.touches[0].clientX;_tM=false;}
+function cellTouchMove(e){if(Math.abs(e.touches[0].clientY-_tY)>8||Math.abs(e.touches[0].clientX-_tX)>8)_tM=true;}
+function cellTouchEnd(e,p,m){if(_tM)return;e.preventDefault();toggleIMonth(p,m);}
 
 function toggleIMonth(pid, month) {
   // Find person (could be borrower-linked or standalone)
@@ -1561,7 +1591,7 @@ function openIDetail(id) {
   const allPeople = getAllIpeople();
   const ip = allPeople.find(x => x.id === id);
   if (!ip) return;
-  const exp = Math.round(ip.amount * ip.rate / 100);
+  const exp = getExpectedInterest(ip, monthKey(now)); // interest based on current balance
   const now = new Date();
   const start = new Date((ip.start || monthKey(now)) + '-01');
   const months = [];
@@ -1589,7 +1619,7 @@ function openIDetail(id) {
         <span style="font-size:11px;color:var(--muted)">${received.length}/${months.length} months</span>
       </div>
       <div style="font-size:24px;font-weight:700;color:var(--accent2)">₹${fmt(totalReceived)}</div>
-      <div style="font-size:12px;color:var(--danger);margin-top:4px">${pendingMonths.length} month${pendingMonths.length!==1?'s':''} pending · ₹${fmt(pendingMonths.length*exp)}</div>
+      <div style="font-size:12px;color:var(--danger);margin-top:4px">${pendingMonths.length} month${pendingMonths.length!==1?'s':''} pending · ₹${fmt(pendingMonths.reduce((s,mo) => s + getExpectedInterest(ip, mo), 0))}</div>
     </div>
     ${(() => {
       const isMineIPerson = ip.source === 'iperson' && DB.ipeople.find(x => x.id === ip.id)?.owner_id === currentUser?.id;
