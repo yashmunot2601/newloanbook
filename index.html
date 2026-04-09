@@ -166,30 +166,30 @@
 
   /* BORROWER CARD */
   .borrower-card {
-    background: var(--surface); border-radius: 16px; padding: 16px;
-    border: 1px solid var(--border); margin-bottom: 12px;
+    background: var(--surface); border-radius: 14px; padding: 12px 14px;
+    border: 1px solid var(--border); margin-bottom: 10px;
     cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
   }
   .borrower-card:active { transform: scale(0.98); }
   .borrower-card.is-dragging { opacity: 0.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6); pointer-events: none; }
   .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; }
   .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; }
-  .drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
+  .drag-handle { width: 24px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 18px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 2px; }
   .drag-handle:hover { color: var(--accent); }
   .drag-handle:active { cursor: grabbing; }
-  .borrower-card-top { display: flex; align-items: center; gap: 12px; }
+  .borrower-card-top { display: flex; align-items: center; gap: 10px; }
   .borrower-avatar {
-    width: 42px; height: 42px; border-radius: 12px;
+    width: 38px; height: 38px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 16px; flex-shrink: 0;
+    font-weight: 700; font-size: 15px; flex-shrink: 0;
   }
   .borrower-info { flex: 1; min-width: 0; }
-  .borrower-name { font-weight: 600; font-size: 15px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .borrower-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .borrower-amount { text-align: right; }
-  .borrower-amount .owed { font-size: 17px; font-weight: 700; color: var(--accent); }
-  .borrower-amount .label { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .progress-bar { height: 4px; background: var(--surface2); border-radius: 4px; margin-top: 12px; overflow: hidden; }
+  .borrower-name { font-weight: 600; font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .borrower-meta { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .borrower-amount { text-align: right; flex-shrink: 0; }
+  .borrower-amount .owed { font-size: 15px; font-weight: 700; color: var(--accent); }
+  .borrower-amount .label { font-size: 10px; color: var(--muted); margin-top: 1px; }
+  .progress-bar { height: 3px; background: var(--surface2); border-radius: 4px; margin-top: 10px; overflow: hidden; }
   .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width 0.4s; }
 
   /* LOAN DETAIL */
@@ -1115,10 +1115,10 @@ function renderBorrowers() {
   let html = active.map(b => borrowerCardHTML(b)).join('');
   if (settled.length > 0) {
     const isOpen = sessionStorage.getItem('settled-open') === 'true';
-    html += `<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
-      <div onclick="toggleSettledSection()" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:7px 14px;margin-bottom:${isOpen?'12px':'0'}">
-        <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
-        <span id="settled-chevron" style="color:var(--muted);font-size:12px">${isOpen ? '▲' : '▼'}</span>
+    html += `<div style="margin-top:20px">
+      <div onclick="toggleSettledSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-top:1px solid var(--border)">
+        <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
+        <span id="settled-chevron" style="color:var(--muted);font-size:16px">${isOpen ? '▲' : '▼'}</span>
       </div>
       <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">${settled.map(b => borrowerCardHTML(b)).join('')}</div>
     </div>`;
@@ -1129,12 +1129,10 @@ function renderBorrowers() {
 function toggleSettledSection() {
   const list = document.getElementById('settled-list');
   const chev = document.getElementById('settled-chevron');
-  const btn = chev?.parentElement;
   if (!list) return;
   const isOpen = list.style.display !== 'none';
   list.style.display = isOpen ? 'none' : 'block';
   if (chev) chev.textContent = isOpen ? '▼' : '▲';
-  if (btn) btn.style.marginBottom = isOpen ? '0' : '12px';
   sessionStorage.setItem('settled-open', !isOpen);
 }
 
@@ -1143,7 +1141,8 @@ function borrowerCardHTML(b) {
   const returned = getReturned(b.id);
   const balance = given - returned;
   const pct = given > 0 ? Math.min(100, Math.round(returned / given * 100)) : 0;
-  const monthlyInterest = b.rate ? Math.round(b.amount * b.rate / 100) : 0;
+  // Interest on CURRENT outstanding balance, not original amount
+  const monthlyInterest = b.rate && balance > 0 ? Math.round(balance * b.rate / 100) : 0;
   const ownerUser = DB.users.find(u => u.id === b.owner_id);
   const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
   return `<div class="borrower-card" data-id="${b.id}" onclick="openDetail('${b.id}')">
@@ -1152,8 +1151,7 @@ function borrowerCardHTML(b) {
       <div class="borrower-avatar" style="background:${b.color || '#e8b86d'}22;color:${b.color || '#e8b86d'}">${b.name[0].toUpperCase()}</div>
       <div class="borrower-info">
         <div class="borrower-name">${b.name}${showOwner ? ` <span style="font-size:10px;background:var(--surface2);padding:2px 6px;border-radius:8px;color:var(--muted);font-weight:500">${ownerUser.name}</span>` : ''}</div>
-        <div class="borrower-meta">${b.rate || 0}%/month · since ${formatDate(b.date)}</div>
-        ${monthlyInterest ? `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-top:2px">₹${fmt(monthlyInterest)}/month interest</div>` : ''}
+        <div class="borrower-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.rate || 0}%/mo · since ${formatDate(b.date)}${monthlyInterest ? ` · <span style="color:var(--accent2);font-weight:600">₹${fmt(monthlyInterest)}/mo</span>` : ''}</div>
       </div>
       <div class="borrower-amount">
         <div class="owed" style="color:${balance<=0?'var(--accent2)':'var(--accent)'}">${balance<=0?'✓ Done':'₹'+fmt(balance)}</div>
@@ -1309,23 +1307,26 @@ function getBalance(id) { return getGiven(id) - getReturned(id); }
 function getBalanceAsOfMonth(borrowerId, monthStr) {
   const b = DB.borrowers.find(x => x.id === borrowerId);
   if (!b) return 0;
-  const monthStart = parseLocalDate(monthStr + '-01');
+  // Parse date as local midnight to avoid timezone issues
+  const [yr, mo] = monthStr.split('-').map(Number);
+  const monthStartMs = new Date(yr, mo - 1, 1).getTime();
   const extras = DB.payments
-    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && parseLocalDate(p.date) < monthStart)
+    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && parseDateLocal(p.date) < monthStartMs)
     .reduce((s, p) => s + p.amount, 0);
   const repaid = DB.payments
-    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && parseLocalDate(p.date) < monthStart)
+    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && parseDateLocal(p.date) < monthStartMs)
     .reduce((s, p) => s + p.amount, 0);
   return Math.max(0, (b.amount || 0) + extras - repaid);
 }
 
-// Parse date string as local midnight (avoids UTC timezone shift bugs)
-function parseLocalDate(dateStr) {
+// Parse a YYYY-MM-DD date string as LOCAL midnight (avoids UTC timezone shift)
+function parseDateLocal(dateStr) {
+  if (!dateStr) return 0;
   const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
+  return new Date(y, m - 1, d).getTime();
 }
 
-// Pro-rata interest for a specific borrower for a specific month
+// Pro-rata interest for current month — segments change when repayment happens
 function getProRataInterest(borrowerId, rate, monthStr) {
   const [yr, mo] = monthStr.split('-').map(Number);
   const monthStart = new Date(yr, mo - 1, 1);
@@ -1335,12 +1336,13 @@ function getProRataInterest(borrowerId, rate, monthStr) {
   const repaysThisMonth = DB.payments
     .filter(p => {
       if (p.borrower_id !== borrowerId || p.type !== 'repay') return false;
-      const d = parseLocalDate(p.date);
-      return d >= monthStart && d < monthEnd;
+      const d = parseDateLocal(p.date);
+      return d >= monthStart.getTime() && d < monthEnd.getTime();
     })
-    .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+    .sort((a, b) => parseDateLocal(a.date) - parseDateLocal(b.date));
 
   const openingBalance = getBalanceAsOfMonth(borrowerId, monthStr);
+  if (openingBalance <= 0) return 0;
 
   if (repaysThisMonth.length === 0) {
     return Math.round(openingBalance * rate / 100);
@@ -1348,37 +1350,35 @@ function getProRataInterest(borrowerId, rate, monthStr) {
 
   let totalInterest = 0;
   let currentBalance = openingBalance;
-  let segmentStart = monthStart;
+  let segmentStartMs = monthStart.getTime();
 
   for (const payment of repaysThisMonth) {
-    const payDate = parseLocalDate(payment.date);
-    const days = (payDate - segmentStart) / (1000 * 60 * 60 * 24);
+    const payMs = parseDateLocal(payment.date);
+    const days = (payMs - segmentStartMs) / (1000 * 60 * 60 * 24);
     if (days > 0 && currentBalance > 0) {
       totalInterest += currentBalance * rate / 100 / daysInMonth * days;
     }
     currentBalance = Math.max(0, currentBalance - payment.amount);
-    segmentStart = payDate;
+    segmentStartMs = payMs;
   }
-  const remainingDays = (monthEnd - segmentStart) / (1000 * 60 * 60 * 24);
+  // Remaining days after last repayment
+  const remainingDays = (monthEnd.getTime() - segmentStartMs) / (1000 * 60 * 60 * 24);
   if (remainingDays > 0 && currentBalance > 0) {
     totalInterest += currentBalance * rate / 100 / daysInMonth * remainingDays;
   }
   return Math.round(totalInterest);
 }
 
-// Get expected interest for PAST months — full month on opening balance.
-// Per spec: once a month has ended, you're owed the full interest regardless
-// of when within that month a repayment happened.
+// Past month interest = full month on opening balance (no pro-rata for closed months)
 function getExpectedInterestLastMonth(ip, monthStr) {
   if (ip.source === 'borrower') {
-    const openingBalance = getBalanceAsOfMonth(ip.borrowerId, monthStr);
-    return Math.round(openingBalance * ip.rate / 100);
+    const opening = getBalanceAsOfMonth(ip.borrowerId, monthStr);
+    return Math.round(opening * ip.rate / 100);
   }
-  // Standalone ipeople: fixed principal
   return Math.round(ip.amount * ip.rate / 100);
 }
 
-// Get expected interest for CURRENT month — pro-rata based on repayments within month
+// Current month interest = pro-rata (changes as repayments come in)
 function getExpectedInterest(ip, monthStr) {
   if (ip.source === 'borrower') {
     return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
@@ -1524,8 +1524,6 @@ async function savePayment() {
     DB.payments.push(p);
     closeModal('modal-payment');
     openDetail(currentBorrowerId);
-    renderDashboard();
-    renderInterestPage();
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -1543,12 +1541,12 @@ let gridYear = new Date().getFullYear();
 // Merge borrowers-with-rate + standalone ipeople into one unified list
 function getAllIpeople() {
   const fromBorrowers = DB.borrowers
-    .filter(b => b.rate > 0 && getBalance(b.id) > 0) // exclude settled borrowers
+    .filter(b => b.rate > 0)
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
       amount: b.amount,
-      rate: b.rate,
+      rate: b.rate,   // already monthly %
       start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
       color: b.color || '#e8b86d',
       source: 'borrower',
@@ -1575,61 +1573,21 @@ function renderInterestPage() {
   const lastMonth = monthKey(lastMonthDate);
   const lastMonthLabel = lastMonthDate.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
 
-  // ── EXPECTED THIS MONTH (collect in April, for March = last month) ──────────
-  // Rule: Fixed full-month interest on balance AT START of last month.
-  // NOT affected by any repayments in current month (April).
-  // Only affected by repayments that happened IN last month (March) itself.
   let totalExpected = 0, totalReceived = 0, pendingCount = 0;
-
-  // Use ALL ipeople (not filtered by current balance) for last month calc
-  // because someone may have repaid fully in April but still owed March interest
-  const allPeopleForLastMonth = (() => {
-    const fromBorrowers = DB.borrowers
-      .filter(b => b.rate > 0)
-      .map(b => ({
-        id: 'B:' + b.id, name: b.name, amount: b.amount, rate: b.rate,
-        start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
-        color: b.color || '#e8b86d', source: 'borrower', borrowerId: b.id
-      }));
-    const standalone = DB.ipeople.map(ip => ({ ...ip, source: 'iperson' }));
-    return [...fromBorrowers, ...standalone];
-  })();
-
-  // Apply owner filter to this list
-  const filteredForLastMonth = allPeopleForLastMonth.filter(ip => {
-    if (!currentUser) return false;
-    if (!isOwner()) {
-      if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === currentUser.id;
-      return DB.ipeople.find(x => x.id === ip.id)?.owner_id === currentUser.id;
-    }
-    if (viewFilter === 'all') return true;
-    const targetId = viewFilter === 'mine' ? currentUser.id : viewFilter;
-    if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === targetId;
-    return DB.ipeople.find(x => x.id === ip.id)?.owner_id === targetId;
-  });
-
-  filteredForLastMonth.forEach(ip => {
+  allPeople.forEach(ip => {
     const ipStart = ip.start || '2026-01';
     if (lastMonth < ipStart) return;
+    // Past month = full month on opening balance (not affected by current month payments)
     const exp = getExpectedInterestLastMonth(ip, lastMonth);
     const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
     totalExpected += exp;
     if (rec) totalReceived += rec.amount; else pendingCount++;
   });
 
-  // ── EXPECTED NEXT MONTH (collect in May, for April = this month) ─────────
-  // Rule: Pro-rata based on repayments within April only.
-  // If repaid ₹4L on Apr 9, interest = (₹5L × rate × 8/30) + (₹1L × rate × 22/30)
-  let totalExpectedNext = 0;
-  allPeople.forEach(ip => {
-    if (thisMonth < (ip.start || '2026-01')) return;
-    totalExpectedNext += getExpectedInterest(ip, thisMonth);
-  });
-
-  // ── CUMULATIVE ────────────────────────────────────────────────────────────
+  // Cumulative pending
   const CUMULATIVE_START = '2026-01';
   let cumulativePending = 0;
-  filteredForLastMonth.forEach(ip => {
+  allPeople.forEach(ip => {
     const ipStart = ip.start || CUMULATIVE_START;
     const rangeStart = ipStart > CUMULATIVE_START ? ipStart : CUMULATIVE_START;
     let cur = new Date(rangeStart + '-01');
@@ -1643,9 +1601,14 @@ function renderInterestPage() {
     }
   });
 
-  // Next month labels
+  // Next month = current month pro-rata (changes as repayments come in)
   const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
   const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
+  let totalExpectedNext = 0;
+  allPeople.forEach(ip => {
+    if (thisMonth < (ip.start || '2026-01')) return;
+    totalExpectedNext += getExpectedInterest(ip, thisMonth);
+  });
 
   const summaryHTML = `
     <div class="summary-card"><div class="label">Expected This Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">Collect in ${now.toLocaleDateString('en-IN',{month:'short'})} · for ${lastMonthLabel}</div></div>
