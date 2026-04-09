@@ -1364,12 +1364,23 @@ function getProRataInterest(borrowerId, rate, monthStr) {
   return Math.round(totalInterest);
 }
 
-// Get expected interest for a person for a specific month
+// Get expected interest for PAST months — full month on opening balance.
+// Per spec: once a month has ended, you're owed the full interest regardless
+// of when within that month a repayment happened.
+function getExpectedInterestLastMonth(ip, monthStr) {
+  if (ip.source === 'borrower') {
+    const openingBalance = getBalanceAsOfMonth(ip.borrowerId, monthStr);
+    return Math.round(openingBalance * ip.rate / 100);
+  }
+  // Standalone ipeople: fixed principal
+  return Math.round(ip.amount * ip.rate / 100);
+}
+
+// Get expected interest for CURRENT month — pro-rata based on repayments within month
 function getExpectedInterest(ip, monthStr) {
   if (ip.source === 'borrower') {
     return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
   }
-  // Standalone ipeople: fixed principal, no repayment tracking
   return Math.round(ip.amount * ip.rate / 100);
 }
 
@@ -1560,41 +1571,77 @@ function renderInterestPage() {
   const lastMonth = monthKey(lastMonthDate);
   const lastMonthLabel = lastMonthDate.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
 
+  // ── EXPECTED THIS MONTH (collect in April, for March = last month) ──────────
+  // Rule: Fixed full-month interest on balance AT START of last month.
+  // NOT affected by any repayments in current month (April).
+  // Only affected by repayments that happened IN last month (March) itself.
   let totalExpected = 0, totalReceived = 0, pendingCount = 0;
-  allPeople.forEach(ip => {
+
+  // Use ALL ipeople (not filtered by current balance) for last month calc
+  // because someone may have repaid fully in April but still owed March interest
+  const allPeopleForLastMonth = (() => {
+    const fromBorrowers = DB.borrowers
+      .filter(b => b.rate > 0)
+      .map(b => ({
+        id: 'B:' + b.id, name: b.name, amount: b.amount, rate: b.rate,
+        start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
+        color: b.color || '#e8b86d', source: 'borrower', borrowerId: b.id
+      }));
+    const standalone = DB.ipeople.map(ip => ({ ...ip, source: 'iperson' }));
+    return [...fromBorrowers, ...standalone];
+  })();
+
+  // Apply owner filter to this list
+  const filteredForLastMonth = allPeopleForLastMonth.filter(ip => {
+    if (!currentUser) return false;
+    if (!isOwner()) {
+      if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === currentUser.id;
+      return DB.ipeople.find(x => x.id === ip.id)?.owner_id === currentUser.id;
+    }
+    if (viewFilter === 'all') return true;
+    const targetId = viewFilter === 'mine' ? currentUser.id : viewFilter;
+    if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === targetId;
+    return DB.ipeople.find(x => x.id === ip.id)?.owner_id === targetId;
+  });
+
+  filteredForLastMonth.forEach(ip => {
     const ipStart = ip.start || '2026-01';
-    if (lastMonth < ipStart) return; // person hadn't started yet in last month — skip
-    const exp = getExpectedInterest(ip, lastMonth);
+    if (lastMonth < ipStart) return;
+    const exp = getExpectedInterestLastMonth(ip, lastMonth);
     const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
     totalExpected += exp;
     if (rec) totalReceived += rec.amount; else pendingCount++;
   });
 
-  // Cumulative pending: sum of all unpaid months from Jan 2026 onwards, up to and including last month
+  // ── EXPECTED NEXT MONTH (collect in May, for April = this month) ─────────
+  // Rule: Pro-rata based on repayments within April only.
+  // If repaid ₹4L on Apr 9, interest = (₹5L × rate × 8/30) + (₹1L × rate × 22/30)
+  let totalExpectedNext = 0;
+  allPeople.forEach(ip => {
+    if (thisMonth < (ip.start || '2026-01')) return;
+    totalExpectedNext += getExpectedInterest(ip, thisMonth);
+  });
+
+  // ── CUMULATIVE ────────────────────────────────────────────────────────────
   const CUMULATIVE_START = '2026-01';
   let cumulativePending = 0;
-  allPeople.forEach(ip => {
+  filteredForLastMonth.forEach(ip => {
     const ipStart = ip.start || CUMULATIVE_START;
     const rangeStart = ipStart > CUMULATIVE_START ? ipStart : CUMULATIVE_START;
     let cur = new Date(rangeStart + '-01');
-    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
+    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1);
     while (cur < cumulativeCutoff) {
       const mk = monthKey(cur);
-      const exp = getExpectedInterest(ip, mk);
+      const exp = getExpectedInterestLastMonth(ip, mk);
       const rec = DB.imonths.find(m => m.pid === ip.id && m.month === mk);
       if (!rec) cumulativePending += exp;
       cur.setMonth(cur.getMonth() + 1);
     }
   });
 
-  // Next month = current month's pro-rata interest (collected next month)
+  // Next month labels
   const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
   const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
-  let totalExpectedNext = 0;
-  allPeople.forEach(ip => {
-    if (thisMonth < (ip.start || '2026-01')) return;
-    totalExpectedNext += getExpectedInterest(ip, thisMonth);
-  });
 
   const summaryHTML = `
     <div class="summary-card"><div class="label">Expected This Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">Collect in ${now.toLocaleDateString('en-IN',{month:'short'})} · for ${lastMonthLabel}</div></div>
