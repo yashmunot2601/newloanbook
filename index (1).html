@@ -1,0 +1,2055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#0f1923"/>
+<title>LoanBook</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0f1923;
+    --surface: #1a2535;
+    --surface2: #243042;
+    --border: #2e3f54;
+    --accent: #e8b86d;
+    --accent2: #5bc4a0;
+    --danger: #e8706d;
+    --text: #f0f4f8;
+    --muted: #7a90a8;
+    --card-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; overscroll-behavior: none; }
+
+  /* AUTH */
+  #auth-screen {
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px;
+    background: var(--bg);
+    position: relative; overflow: hidden;
+  }
+  #auth-screen::before {
+    content: '';
+    position: absolute; top: -120px; right: -80px;
+    width: 340px; height: 340px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,184,109,0.12) 0%, transparent 70%);
+  }
+  #auth-screen::after {
+    content: '';
+    position: absolute; bottom: -100px; left: -60px;
+    width: 260px; height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(91,196,160,0.08) 0%, transparent 70%);
+  }
+  .auth-logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 42px; color: var(--accent);
+    margin-bottom: 4px; letter-spacing: -1px;
+  }
+  .auth-tagline { color: var(--muted); font-size: 13px; margin-bottom: 40px; font-weight: 300; letter-spacing: 0.5px; }
+  .auth-card {
+    width: 100%; max-width: 380px;
+    background: var(--surface);
+    border-radius: 20px; padding: 28px 24px;
+    border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
+  }
+  .auth-card h2 { font-size: 20px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.6px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 12px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-family: inherit; font-size: 15px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field select option { background: var(--surface2); }
+  .btn {
+    width: 100%; padding: 13px; border-radius: 12px; border: none;
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: all 0.18s; letter-spacing: 0.2px;
+  }
+  .btn-primary { background: var(--accent); color: #1a1000; }
+  .btn-primary:active { transform: scale(0.97); opacity: 0.9; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .auth-switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .auth-switch span { color: var(--accent); cursor: pointer; font-weight: 500; }
+  .error-msg { color: var(--danger); font-size: 13px; margin-top: 8px; text-align: center; }
+
+  /* APP SHELL */
+  #app { display: none; flex-direction: column; height: 100vh; width: 100%; max-width: 480px; margin: 0 auto; }
+  #app.visible { display: flex; }
+
+  /* TOP BAR */
+  .topbar {
+    background: var(--surface);
+    padding: env(safe-area-inset-top, 16px) 20px 12px;
+    padding-top: max(16px, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .topbar-title { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--accent); }
+  .topbar-right { display: flex; gap: 10px; align-items: center; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--accent); color: #1a1000;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--surface2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--muted); font-size: 18px;
+  }
+
+  /* SCROLL AREA */
+  .scroll-area { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: max(90px, calc(70px + env(safe-area-inset-bottom))); }
+  .scroll-area::-webkit-scrollbar { display: none; }
+
+  /* BOTTOM NAV */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around;
+    padding: 10px 0;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 100;
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    cursor: pointer; padding: 4px 16px; border-radius: 10px;
+    transition: all 0.15s; color: var(--muted);
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item svg { width: 22px; height: 22px; }
+  .nav-item span { font-size: 10px; font-weight: 500; letter-spacing: 0.3px; }
+
+  /* PAGES */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* DASHBOARD */
+  .greeting { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .greeting strong { color: var(--text); font-weight: 600; }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .summary-card {
+    background: var(--surface); border-radius: 16px; padding: 16px;
+    border: 1px solid var(--border); position: relative; overflow: hidden;
+  }
+  .summary-card::after {
+    content: ''; position: absolute; top: -20px; right: -20px;
+    width: 70px; height: 70px; border-radius: 50%;
+    background: rgba(255,255,255,0.03);
+  }
+  .summary-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .summary-card .value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
+  .summary-card .value.green { color: var(--accent2); }
+  .summary-card .value.amber { color: var(--accent); }
+  .summary-card .value.red { color: var(--danger); }
+  .summary-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 20px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; }
+  .section-action { font-size: 13px; color: var(--accent); cursor: pointer; font-weight: 500; }
+
+  /* BORROWER CARD */
+  .borrower-card {
+    background: var(--surface); border-radius: 16px; padding: 16px;
+    border: 1px solid var(--border); margin-bottom: 12px;
+    cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
+  }
+  .borrower-card:active { transform: scale(0.98); }
+  .borrower-card.is-dragging { opacity: 0.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6); pointer-events: none; }
+  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; }
+  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; }
+  .drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
+  .drag-handle:hover { color: var(--accent); }
+  .drag-handle:active { cursor: grabbing; }
+  .borrower-card-top { display: flex; align-items: center; gap: 12px; }
+  .borrower-avatar {
+    width: 42px; height: 42px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 16px; flex-shrink: 0;
+  }
+  .borrower-info { flex: 1; min-width: 0; }
+  .borrower-name { font-weight: 600; font-size: 15px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .borrower-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .borrower-amount { text-align: right; }
+  .borrower-amount .owed { font-size: 17px; font-weight: 700; color: var(--accent); }
+  .borrower-amount .label { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .progress-bar { height: 4px; background: var(--surface2); border-radius: 4px; margin-top: 12px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width 0.4s; }
+
+  /* LOAN DETAIL */
+  .back-btn {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--accent); font-size: 14px; font-weight: 500;
+    cursor: pointer; margin-bottom: 16px;
+  }
+  .detail-header {
+    background: var(--surface); border-radius: 18px; padding: 20px;
+    border: 1px solid var(--border); margin-bottom: 16px;
+    text-align: center;
+  }
+  .detail-avatar {
+    width: 60px; height: 60px; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 700; margin: 0 auto 10px;
+  }
+  .detail-name { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .detail-contact { font-size: 13px; color: var(--muted); }
+  .detail-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 16px 0; }
+  .detail-stat { background: var(--surface); border-radius: 12px; padding: 12px; text-align: center; border: 1px solid var(--border); }
+  .detail-stat .val { font-size: 16px; font-weight: 700; }
+  .detail-stat .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  /* PAYMENT HISTORY */
+  .payment-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .payment-item:last-child { border-bottom: none; }
+  .payment-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .payment-dot.paid { background: var(--accent2); }
+  .payment-dot.given { background: var(--accent); }
+  .payment-info { flex: 1; }
+  .payment-info .type { font-size: 13px; font-weight: 500; }
+  .payment-info .date { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .payment-amt { font-weight: 700; font-size: 15px; }
+  .payment-amt.paid { color: var(--accent2); }
+  .payment-amt.given { color: var(--accent); }
+
+  /* FAB */
+  .fab {
+    position: fixed; bottom: max(80px, calc(60px + env(safe-area-inset-bottom))); right: 20px;
+    width: 54px; height: 54px; border-radius: 16px;
+    background: var(--accent); color: #1a1000;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 300; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(232,184,109,0.4);
+    z-index: 99; transition: all 0.18s; border: none;
+    font-family: inherit;
+  }
+  .fab:active { transform: scale(0.92); }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 200; display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border-radius: 24px 24px 0 0;
+    padding: 24px 20px 36px; width: 100%; max-width: 480px;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 0 auto 20px; }
+  .modal h3 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+
+  /* CALC PAGE */
+  .calc-card { background: var(--surface); border-radius: 18px; padding: 20px; border: 1px solid var(--border); margin-bottom: 14px; }
+  .calc-result { text-align: center; padding: 20px 0; }
+  .calc-result .big { font-size: 36px; font-weight: 700; color: var(--accent); font-family: 'DM Serif Display', serif; }
+  .calc-result .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .calc-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .calc-item { background: var(--surface2); border-radius: 12px; padding: 12px; text-align: center; }
+  .calc-item .v { font-size: 15px; font-weight: 700; }
+  .calc-item .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+
+  /* EMPTY STATE */
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; line-height: 1.6; }
+
+  /* SETTINGS */
+  .settings-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+  }
+  .settings-item:last-child { border-bottom: none; }
+  .settings-item .s-label { font-size: 15px; }
+  .settings-item .s-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .tag-green { background: rgba(91,196,160,0.15); color: var(--accent2); }
+  .tag-amber { background: rgba(232,184,109,0.15); color: var(--accent); }
+  .tag-red { background: rgba(232,112,109,0.15); color: var(--danger); }
+
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip {
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--muted);
+    transition: all 0.15s;
+  }
+  .chip.active { background: var(--accent); color: #1a1000; border-color: var(--accent); }
+
+  .colors { display: flex; gap: 8px; margin-top: 6px; }
+  .color-dot { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
+  .color-dot.selected { border-color: white; transform: scale(1.15); }
+
+  /* HORIZONTAL SCROLL for home borrowers */
+  .hscroll-wrap { overflow-x: auto; margin: 0 -16px; padding: 0 16px 8px; }
+  .hscroll-wrap::-webkit-scrollbar { display: none; }
+  .hscroll-row { display: flex; gap: 12px; width: max-content; padding-bottom: 4px; }
+  .mini-card {
+    background: var(--surface); border-radius: 16px; padding: 14px;
+    border: 1px solid var(--border); cursor: pointer; transition: all 0.15s;
+    width: 160px; flex-shrink: 0;
+  }
+  .mini-card:active { transform: scale(0.96); }
+  .mini-card-avatar { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+  .mini-card-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-card-amount { font-size: 16px; font-weight: 700; margin-top: 4px; }
+  .mini-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* MONTH GRID (detail view) */
+  .month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .month-cell {
+    border-radius: 10px; padding: 10px 6px; text-align: center;
+    border: 1px solid var(--border); cursor: pointer; transition: all 0.15s;
+    background: var(--surface2);
+  }
+  .month-cell.received { background: rgba(91,196,160,0.15); border-color: rgba(91,196,160,0.3); }
+  .month-cell.pending { background: rgba(232,112,109,0.1); border-color: rgba(232,112,109,0.25); }
+  .month-cell.future { opacity: 0.4; cursor: default; }
+  .month-cell .mc-month { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .month-cell .mc-status { font-size: 16px; margin: 2px 0; }
+  .month-cell .mc-amt { font-size: 10px; font-weight: 600; }
+
+  /* SPREADSHEET GRID */
+  .sgrid { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); min-width: 600px; }
+  .sgrid-head { display: flex; background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .sgrid-head-name { width: 110px; flex-shrink: 0; padding: 9px 10px; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid var(--border); }
+  .sgrid-head-month { flex: 1; text-align: center; padding: 9px 4px; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; border-right: 1px solid var(--border); }
+  .sgrid-head-month:last-child { border-right: none; }
+  .sgrid-head-month.cur-month { color: var(--accent); }
+  .sgrid-row { display: flex; border-bottom: 1px solid var(--border); }
+  .sgrid-row:last-child { border-bottom: none; }
+  .sgrid-name { width: 110px; flex-shrink: 0; padding: 10px; display: flex; align-items: center; gap: 7px; border-right: 1px solid var(--border); cursor: pointer; background: var(--surface); }
+  .sgrid-name:active { opacity: 0.7; }
+  .sgrid-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sgrid-name-text { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .sgrid-cell { flex: 1; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 48px; position: relative; -webkit-tap-highlight-color: rgba(0,0,0,0); user-select: none; -webkit-user-select: none; }
+  .sgrid-cell:last-child { border-right: none; }
+  .sgrid-cell.s-received { background: rgba(91,196,160,0.18); }
+  .sgrid-cell.s-pending { background: rgba(232,112,109,0.1); }
+  .sgrid-cell.s-future { background: transparent; cursor: default; opacity: 0.3; }
+  .sgrid-cell.s-nointerest { background: transparent; cursor: default; }
+  .sgrid-cell-inner { font-size: 15px; line-height: 1; }
+  .sgrid-empty { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; background: var(--surface); }
+
+  /* VIEW FILTER TABS */
+  .filter-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; min-height: 36px; }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tab {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--muted); white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+  }
+  .filter-tab.active { background: var(--accent); color: #1a1000; border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-logo">LoanBook</div>
+  <div class="auth-tagline">Your personal loan ledger</div>
+  <div class="auth-card" id="login-card">
+    <h2>Welcome back</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="login-name" placeholder="Your name" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label>PIN (4 digits)</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="login-pin" placeholder="••••"/>
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    <div id="login-error" class="error-msg"></div>
+    <div class="auth-switch">No account? <span onclick="switchToRegister()">Create one</span></div>
+  </div>
+  <div class="auth-card" id="register-card" style="display:none">
+    <h2>Create account</h2>
+    <div class="field">
+      <label>Your Name</label>
+      <input type="text" id="reg-name" placeholder="e.g. Rahul"/>
+    </div>
+    <div class="field">
+      <label>PIN (4 digits)</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="reg-pin" placeholder="••••"/>
+    </div>
+    <div class="field">
+      <label>Invite Code</label>
+      <input type="text" id="reg-code" placeholder="Ask the owner for the code"/>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+      ℹ️ Leave invite code blank if you're the first user (owner).
+    </div>
+    <button class="btn btn-primary" onclick="doRegister()">Create Account</button>
+    <div id="reg-error" class="error-msg"></div>
+    <div class="auth-switch">Have account? <span onclick="switchToLogin()">Sign in</span></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-title">LoanBook</div>
+    <div class="topbar-right">
+      <div class="icon-btn" onclick="showNotifications()" title="Reminders">🔔</div>
+      <div class="avatar" id="user-avatar" onclick="goToSettings()">R</div>
+    </div>
+  </div>
+
+  <div class="scroll-area">
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-home">
+      <div class="greeting">Hello, <strong id="dash-name">User</strong> 👋</div>
+      <div id="dash-subtitle" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+      <div class="filter-tabs" id="home-filter-tabs" style="display:none;margin-top:12px"></div>
+      <div class="summary-grid" id="summary-grid"></div>
+      <div class="section-header" style="margin-top:4px">
+        <span class="section-title">Interest Tracker</span>
+      </div>
+      <div id="home-interest-summary-grid" class="summary-grid" style="margin-top:0"></div>
+      <div class="summary-grid" style="margin-top:0;margin-bottom:4px" id="home-interest-cumulative-card"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
+        <div onclick="changeYear(-1)" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--muted)">‹</div>
+        <div id="home-grid-year-label" style="font-size:15px;font-weight:600;color:var(--text)">2026</div>
+        <div onclick="changeYear(1)" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--muted)">›</div>
+      </div>
+      <div style="overflow-x:auto;margin:0 -16px;padding:0 16px 4px">
+        <div id="home-interest-grid-wrap"></div>
+      </div>
+      <div style="height:20px"></div>
+    </div>
+
+    <!-- BORROWERS PAGE -->
+    <div class="page" id="page-borrowers">
+      <div class="section-header" style="margin-top:0">
+        <span class="section-title">All Borrowers</span>
+      </div>
+      <div class="filter-tabs" id="loans-filter-tabs" style="display:none"></div>
+      <div id="loans-summary-card" style="margin-bottom:12px"></div>
+      <div id="borrowers-list"></div>
+      <div style="height:10px"></div>
+    </div>
+
+    <!-- DETAIL PAGE -->
+    <div class="page" id="page-detail">
+      <div class="back-btn" onclick="goBack()">← Back</div>
+      <div id="detail-content"></div>
+    </div>
+
+    <!-- INTEREST TRACKER PAGE -->
+    <div class="page" id="page-interest">
+      <div class="section-header" style="margin-top:0">
+        <span class="section-title">Interest Tracker</span>
+      </div>
+      <div class="filter-tabs" id="interest-filter-tabs" style="display:none;margin-bottom:12px"></div>
+      <div id="interest-summary-grid" class="summary-grid" style="margin-top:0"></div>
+      <div class="summary-grid" style="margin-top:0;margin-bottom:8px" id="interest-cumulative-card"></div>
+      <!-- Year selector -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
+        <div onclick="changeYear(-1)" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--muted)">‹</div>
+        <div id="grid-year-label" style="font-size:15px;font-weight:600;color:var(--text)">2025</div>
+        <div onclick="changeYear(1)" style="width:34px;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;color:var(--muted)">›</div>
+      </div>
+      <!-- Spreadsheet grid -->
+      <div style="overflow-x:auto;margin:0 -16px;padding:0 16px 4px">
+        <div id="interest-grid-wrap"></div>
+      </div>
+      <div style="height:20px"></div>
+    </div>
+
+    <!-- INTEREST PERSON DETAIL PAGE -->
+    <div class="page" id="page-idetail">
+      <div class="back-btn" onclick="navTo('interest')">← Back</div>
+      <div id="idetail-content"></div>
+    </div>
+
+    <!-- CALCULATOR PAGE (hidden, kept for reference) -->
+    <div class="page" id="page-calc">
+      <div class="section-header" style="margin-top:0">
+        <span class="section-title">Interest Calculator</span>
+      </div>
+      <div class="calc-card">
+        <div class="field">
+          <label>Principal Amount (₹)</label>
+          <input type="number" id="c-principal" placeholder="50000" oninput="calcInterest()"/>
+        </div>
+        <div class="field">
+          <label>Annual Interest Rate (%)</label>
+          <input type="number" id="c-rate" placeholder="12" oninput="calcInterest()"/>
+        </div>
+        <div class="field">
+          <label>Duration</label>
+          <div style="display:flex;gap:10px">
+            <input type="number" id="c-duration" placeholder="6" oninput="calcInterest()" style="flex:1"/>
+            <select id="c-unit" onchange="calcInterest()" style="flex:1;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:15px;outline:none;">
+              <option value="months">Months</option>
+              <option value="years">Years</option>
+              <option value="days">Days</option>
+            </select>
+          </div>
+        </div>
+        <div class="chip-row">
+          <div class="chip active" id="chip-simple" onclick="setCalcType('simple')">Simple Interest</div>
+          <div class="chip" id="chip-compound" onclick="setCalcType('compound')">Compound</div>
+        </div>
+      </div>
+      <div class="calc-card" id="calc-result-card" style="display:none">
+        <div class="calc-result">
+          <div class="big" id="calc-total">₹0</div>
+          <div class="sub">Total Amount to Receive</div>
+        </div>
+        <div class="calc-breakdown">
+          <div class="calc-item"><div class="v" id="calc-principal-out">₹0</div><div class="l">Principal</div></div>
+          <div class="calc-item"><div class="v" id="calc-interest-out" style="color:var(--accent)">₹0</div><div class="l">Interest</div></div>
+          <div class="calc-item"><div class="v" id="calc-monthly">₹0</div><div class="l">Per Month</div></div>
+          <div class="calc-item"><div class="v" id="calc-daily">₹0</div><div class="l">Per Day</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div class="section-header" style="margin-top:0">
+        <span class="section-title">Settings</span>
+      </div>
+      <div class="calc-card">
+        <div class="settings-item">
+          <div><div class="s-label">Logged in as</div><div class="s-sub" id="s-username">—</div></div>
+          <div class="tag tag-amber" id="s-role">Owner</div>
+        </div>
+        <div class="settings-item">
+          <div><div class="s-label">Your Invite Code</div><div class="s-sub">Share with family to join</div></div>
+          <div style="font-size:16px;font-weight:700;color:var(--accent);cursor:pointer" id="s-invite" onclick="copyInvite()">COPY</div>
+        </div>
+        <div class="settings-item">
+          <div><div class="s-label">Change PIN</div><div class="s-sub">Update your 4-digit PIN</div></div>
+          <div onclick="openChangePinModal()" style="color:var(--accent);cursor:pointer;font-weight:600;font-size:14px">Change</div>
+        </div>
+        <div class="settings-item" style="border:none">
+          <div><div class="s-label">Sign Out</div></div>
+          <div onclick="signOut()" style="color:var(--danger);cursor:pointer;font-weight:600;font-size:14px">Sign out</div>
+        </div>
+      </div>
+      <div class="calc-card" id="owner-settings" style="display:none">
+        <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:14px">Family Members</div>
+        <div id="members-list"></div>
+      </div>
+      <!-- BACKUP & TRANSFER -->
+      <div class="calc-card">
+        <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:14px">Backup & Transfer</div>
+        <div class="settings-item">
+          <div>
+            <div class="s-label">Download App + Data</div>
+            <div class="s-sub">Saves the full app with your data baked in</div>
+          </div>
+          <div onclick="exportApp()" style="color:var(--accent);cursor:pointer;font-weight:600;font-size:14px">Export</div>
+        </div>
+        <div class="settings-item">
+          <div>
+            <div class="s-label">Export Data Only</div>
+            <div class="s-sub">JSON backup of all your data</div>
+          </div>
+          <div onclick="exportData()" style="color:var(--accent);cursor:pointer;font-weight:600;font-size:14px">Export</div>
+        </div>
+        <div class="settings-item" style="border:none">
+          <div>
+            <div class="s-label">Import Data</div>
+            <div class="s-sub">Restore from a JSON backup</div>
+          </div>
+          <div onclick="document.getElementById('import-file').click()" style="color:var(--accent2);cursor:pointer;font-weight:600;font-size:14px">Import</div>
+        </div>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)"/>
+      </div>
+      <div style="text-align:center;margin-top:20px;color:var(--muted);font-size:12px;">
+        LoanBook v1.0 · Your data stays on this device
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <div class="nav-item active" id="nav-home" onclick="navTo('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>Home</span>
+    </div>
+    <div class="nav-item" id="nav-borrowers" onclick="navTo('borrowers')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      <span>Loans</span>
+    </div>
+    <div class="nav-item" id="nav-interest" onclick="navTo('interest')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      <span>Interest</span>
+    </div>
+    <div class="nav-item" id="nav-settings" onclick="navTo('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>Settings</span>
+    </div>
+  </div>
+
+  <!-- FAB -->
+  <button class="fab" id="fab-btn" onclick="openFab()">+</button>
+</div>
+
+<!-- ADD BORROWER MODAL -->
+<div class="modal-overlay" id="modal-borrower">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Add New Borrower</h3>
+    <div class="field"><label>Full Name</label><input type="text" id="b-name" placeholder="e.g. Amit Kumar"/></div>
+    <div class="field"><label>Loan Amount (₹)</label><input type="text" inputmode="numeric" id="b-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="b-rate" placeholder="e.g. 1.5 (0 for no interest)" step="0.1"/></div>
+    <div class="field"><label>Loan Date</label><input type="date" id="b-date"/></div>
+    <div class="field"><label>Notes (optional)</label><textarea id="b-notes" rows="2" placeholder="Purpose, due date, etc."></textarea></div>
+    <div class="field">
+      <label>Color</label>
+      <div class="colors" id="color-picker">
+        <div class="color-dot selected" style="background:#e8b86d" data-c="#e8b86d" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#5bc4a0" data-c="#5bc4a0" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#7b9fe8" data-c="#7b9fe8" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#e87b9f" data-c="#e87b9f" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#b87be8" data-c="#b87be8" onclick="selectColor(this)"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveBorrower()">Add Borrower</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-borrower')">Cancel</button>
+  </div>
+</div>
+
+<!-- ADD PAYMENT MODAL -->
+<div class="modal-overlay" id="modal-payment">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="payment-modal-title">Record Payment</h3>
+    <div class="chip-row">
+      <div class="chip active" id="pchip-repay" onclick="setPayType('repay')">Repayment Received</div>
+      <div class="chip" id="pchip-extra" onclick="setPayType('extra')">Give More Money</div>
+    </div>
+    <div class="field"><label>Amount (₹)</label><input type="text" inputmode="numeric" id="p-amount" placeholder="e.g. 5,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Date</label><input type="date" id="p-date"/></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="p-note" placeholder="e.g. Monthly EMI"/></div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="savePayment()">Save</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-payment')">Cancel</button>
+  </div>
+</div>
+
+<!-- EDIT PAYMENT MODAL -->
+<div class="modal-overlay" id="modal-edit-payment">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Edit Payment</h3>
+    <input type="hidden" id="ep-id"/>
+    <div class="chip-row">
+      <div class="chip active" id="epchip-repay" onclick="setEpType('repay')">Repayment Received</div>
+      <div class="chip" id="epchip-extra" onclick="setEpType('extra')">Extra Given</div>
+    </div>
+    <div class="field"><label>Amount (₹)</label><input type="number" id="ep-amount"/></div>
+    <div class="field"><label>Date</label><input type="date" id="ep-date"/></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="ep-note"/></div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveEditPayment()">Save Changes</button>
+    <button class="btn btn-danger" style="margin-top:10px" onclick="deletePayment()">Delete Payment</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-edit-payment')">Cancel</button>
+  </div>
+</div>
+
+<!-- EDIT BORROWER MODAL -->
+<div class="modal-overlay" id="modal-edit-borrower">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Edit Borrower</h3>
+    <input type="hidden" id="e-id"/>
+    <div class="field"><label>Full Name</label><input type="text" id="e-name" placeholder="e.g. Amit Kumar"/></div>
+    <div class="field"><label>Loan Amount (₹)</label><input type="text" inputmode="numeric" id="e-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Interest Rate (% / month)</label><input type="number" id="e-rate" placeholder="e.g. 1.5 (0 for no interest)" step="0.1"/></div>
+    <div class="field"><label>Loan Date</label><input type="date" id="e-date"/></div>
+    <div class="field"><label>Notes (optional)</label><textarea id="e-notes" rows="2" placeholder="Purpose, due date, etc."></textarea></div>
+    <div class="field">
+      <label>Color</label>
+      <div class="colors" id="edit-color-picker">
+        <div class="color-dot selected" style="background:#e8b86d" data-c="#e8b86d" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#5bc4a0" data-c="#5bc4a0" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#7b9fe8" data-c="#7b9fe8" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#e87b9f" data-c="#e87b9f" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#b87be8" data-c="#b87be8" onclick="selectColor(this)"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveEditBorrower()">Save Changes</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-edit-borrower')">Cancel</button>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div class="modal-overlay" id="modal-confirm-delete">
+  <div class="modal" style="padding-bottom:28px">
+    <div class="modal-handle"></div>
+    <div style="text-align:center;padding:10px 0 20px">
+      <div style="font-size:44px;margin-bottom:12px">🗑</div>
+      <h3 style="margin-bottom:8px">Delete Borrower?</h3>
+      <p style="color:var(--muted);font-size:14px;line-height:1.5">This will permanently delete <strong id="confirm-delete-name" style="color:var(--text)"></strong> and all their payment records. This cannot be undone.</p>
+    </div>
+    <input type="hidden" id="confirm-delete-id"/>
+    <button class="btn btn-danger" onclick="deleteBorrower()">Yes, Delete</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-confirm-delete')">Cancel</button>
+  </div>
+</div>
+
+<!-- ADD INTEREST PERSON MODAL -->
+<div class="modal-overlay" id="modal-iperson">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="iperson-modal-title">Add Borrower (Interest Only)</h3>
+    <input type="hidden" id="ip-id"/>
+    <div class="field"><label>Full Name</label><input type="text" id="ip-name" placeholder="e.g. Suresh Bhai"/></div>
+    <div class="field"><label>Principal Amount (₹)</label><input type="text" inputmode="numeric" id="ip-amount" placeholder="e.g. 1,00,000" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Monthly Interest Rate (%)</label><input type="number" id="ip-rate" placeholder="e.g. 1.5 (for 1.5% per month)" step="0.1"/></div>
+    <div class="field"><label>Start Month</label><input type="month" id="ip-start"/></div>
+    <div class="field"><label>Notes (optional)</label><textarea id="ip-notes" rows="2" placeholder="Any details..."></textarea></div>
+    <div class="field">
+      <label>Color</label>
+      <div class="colors" id="iperson-color-picker">
+        <div class="color-dot selected" style="background:#e8b86d" data-c="#e8b86d" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#5bc4a0" data-c="#5bc4a0" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#7b9fe8" data-c="#7b9fe8" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#e87b9f" data-c="#e87b9f" onclick="selectColor(this)"></div>
+        <div class="color-dot" style="background:#b87be8" data-c="#b87be8" onclick="selectColor(this)"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveIPerson()">Save</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-iperson')">Cancel</button>
+  </div>
+</div>
+
+<!-- CHANGE PIN MODAL -->
+<div class="modal-overlay" id="modal-change-pin">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Change PIN</h3>
+    <div class="field">
+      <label>Current PIN</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="cp-current" placeholder="••••"/>
+    </div>
+    <div class="field">
+      <label>New PIN (4 digits)</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="cp-new" placeholder="••••"/>
+    </div>
+    <div class="field">
+      <label>Confirm New PIN</label>
+      <input type="password" inputmode="numeric" maxlength="4" id="cp-confirm" placeholder="••••"/>
+    </div>
+    <div id="cp-error" style="color:var(--danger);font-size:13px;margin-bottom:8px;text-align:center"></div>
+    <button class="btn btn-primary" style="margin-top:4px" onclick="saveChangePin()">Update PIN</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-change-pin')">Cancel</button>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-imonth">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Mark Interest Payment</h3>
+    <input type="hidden" id="im-pid"/>
+    <div class="field"><label>Month</label><input type="month" id="im-month"/></div>
+    <div class="field"><label>Amount Received (₹)</label><input type="text" inputmode="numeric" id="im-amount" placeholder="Auto-filled from rate" oninput="formatAmountInput(this)"/></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="im-note" placeholder="e.g. Cash received"/></div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveIMonth()">Mark as Received</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-imonth')">Cancel</button>
+  </div>
+</div>
+
+<script>
+// ========== SUPABASE ==========
+const SUPA_URL = 'https://bzlxrncjcxcuciwqfvpv.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6bHhybmNqY3hjdWNpd3FmdnB2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjQ3NzksImV4cCI6MjA5MDcwMDc3OX0.9DD391S5on2KS-Glj9ldvaJFQ13BXn3zGJd8gtkOUbA';
+
+async function sbFetch(path, options = {}) {
+  const method = options.method || 'GET';
+  const headers = {
+    'apikey': SUPA_KEY,
+    'Authorization': 'Bearer ' + SUPA_KEY,
+    'Content-Type': 'application/json'
+  };
+  if (method !== 'GET') {
+    headers['Prefer'] = options.prefer || 'return=representation';
+  }
+  const res = await fetch(SUPA_URL + '/rest/v1/' + path, {
+    method,
+    headers,
+    body: options.body || undefined
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Supabase error ' + res.status + ': ' + err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
+async function dbSelect(table, query = '') {
+  return sbFetch(table + (query ? '?' + query : ''));
+}
+async function dbInsert(table, data) {
+  return sbFetch(table, { method: 'POST', body: JSON.stringify(data) });
+}
+async function dbUpdate(table, id, data) {
+  return sbFetch(table + '?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) });
+}
+async function dbDelete(table, query) {
+  return sbFetch(table + '?' + query, { method: 'DELETE' });
+}
+
+// ========== STATE ==========
+let DB = {
+  users: [],
+  borrowers: [],
+  payments: [],
+  ipeople: [],
+  imonths: [],
+  inviteCode: 'LOANBOOK'
+};
+let currentUser = null;
+let currentBorrowerId = null;
+let currentPage = 'home';
+let selectedColor = '#e8b86d';
+let payType = 'repay';
+let viewFilter = 'all'; // 'all', 'mine', or a specific user id
+
+async function loadAllData() {
+  try {
+    const [users, borrowers, payments, ipeople, imonths, settings] = await Promise.all([
+      dbSelect('lb_users'),
+      dbSelect('lb_borrowers', 'order=sort_order.asc,created_at.asc'),
+      dbSelect('lb_payments', 'order=date.asc'),
+      dbSelect('lb_ipeople', 'order=created_at.asc'),
+      dbSelect('lb_imonths'),
+      dbSelect('lb_settings')
+    ]);
+    DB.users = users;
+    DB.borrowers = borrowers;
+    DB.payments = payments;
+    DB.ipeople = ipeople;
+    DB.imonths = imonths;
+    DB.inviteCode = settings[0]?.invite_code || 'YASH01';
+  } catch(e) {
+    console.error('loadAllData failed:', e);
+    throw e; // re-throw so login shows real error
+  }
+}
+
+// legacy save() stub — no-op since we save per operation now
+function save() {}
+
+const COLORS = ['#e8b86d','#5bc4a0','#7b9fe8','#e87b9f','#b87be8'];
+
+// ========== AUTH ==========
+function switchToRegister() {
+  document.getElementById('login-card').style.display = 'none';
+  document.getElementById('register-card').style.display = 'block';
+}
+function switchToLogin() {
+  document.getElementById('register-card').style.display = 'none';
+  document.getElementById('login-card').style.display = 'block';
+}
+async function doLogin() {
+  const name = document.getElementById('login-name').value.trim();
+  const pin = document.getElementById('login-pin').value;
+  const errEl = document.getElementById('login-error');
+  if (!name || !pin) { errEl.textContent = 'Please enter name and PIN.'; return; }
+  errEl.textContent = 'Connecting...';
+  errEl.style.color = 'var(--muted)';
+  try {
+    await loadAllData();
+    const user = DB.users.find(u => u.name.toLowerCase() === name.toLowerCase() && u.pin === pin);
+    if (!user) {
+      errEl.textContent = 'Name or PIN is incorrect.';
+      errEl.style.color = 'var(--danger)';
+      return;
+    }
+    errEl.textContent = '';
+    currentUser = user;
+    localStorage.setItem('loanbook_name', user.name);
+    enterApp();
+  } catch(e) {
+    errEl.textContent = '⚠️ ' + e.message;
+    errEl.style.color = 'var(--danger)';
+    console.error(e);
+  }
+}
+async function doRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  const pin = document.getElementById('reg-pin').value;
+  const code = document.getElementById('reg-code').value.trim().toUpperCase();
+  const err = document.getElementById('reg-error');
+  if (!name || pin.length !== 4) { err.textContent = 'Please fill all fields with a 4-digit PIN.'; return; }
+  err.textContent = 'Creating account...';
+  try {
+    await loadAllData();
+    if (DB.users.find(u => u.name.toLowerCase() === name.toLowerCase())) { err.textContent = 'Name already taken.'; return; }
+    // First ever user becomes owner automatically, no invite code needed
+    // Everyone else MUST have invite code and is ALWAYS family (viewer) — no exceptions
+    let newRole;
+    if (DB.users.length === 0) {
+      newRole = 'owner'; // First user = owner, no code needed
+    } else {
+      if (code !== DB.inviteCode) { err.textContent = 'Wrong invite code.'; return; }
+      newRole = 'viewer'; // Everyone else = family, regardless of what they selected
+    }
+    const [user] = await dbInsert('lb_users', { name, pin, role: newRole });
+    DB.users.push(user);
+    err.textContent = '';
+    currentUser = user;
+    localStorage.setItem('loanbook_name', user.name);
+    enterApp();
+  } catch(e) { err.textContent = 'Error: ' + e.message; }
+}
+function enterApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('user-avatar').textContent = currentUser.name[0].toUpperCase();
+  document.getElementById('dash-name').textContent = currentUser.name;
+  if (currentUser.role === 'viewer') {
+    document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
+    viewFilter = 'mine';
+  } else {
+    viewFilter = 'all';
+  }
+  document.getElementById('fab-btn').style.display = 'flex';
+  // Always go to home page on login regardless of previous page
+  navTo('home');
+  renderSettings();
+}
+function signOut() {
+  currentUser = null;
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('auth-screen').style.display = 'flex';
+  // Keep name prefilled, clear PIN only
+  document.getElementById('login-name').value = localStorage.getItem('loanbook_name') || '';
+  document.getElementById('login-pin').value = '';
+  document.getElementById('login-error').textContent = '';
+  setTimeout(() => document.getElementById('login-pin').focus(), 100);
+}
+
+function navTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page)?.classList.add('active');
+  currentPage = page;
+  if (page === 'home') { renderDashboard(); renderInterestPage(); }
+  if (page === 'borrowers') renderBorrowers();
+  if (page === 'interest') renderInterestPage();
+  if (page === 'settings') renderSettings();
+  document.querySelector('.scroll-area').scrollTop = 0;
+}
+function goBack() { navTo(currentPage === 'detail' ? 'borrowers' : 'home'); }
+function goToSettings() { navTo('settings'); }
+
+// ========== DASHBOARD ==========
+function isOwner() { return currentUser?.role === 'owner'; }
+
+function getFilteredBorrowers() {
+  if (!currentUser) return [];
+  // Viewers ALWAYS see only their own data — no exceptions
+  if (!isOwner()) return DB.borrowers.filter(b => b.owner_id === currentUser.id);
+  // Owners can filter
+  if (viewFilter === 'all') return DB.borrowers;
+  if (viewFilter === 'mine') return DB.borrowers.filter(b => b.owner_id === currentUser.id);
+  // Filter by any specific user (owner or family)
+  return DB.borrowers.filter(b => b.owner_id === viewFilter);
+}
+
+function getFilteredIpeople() {
+  const allIP = getAllIpeople();
+  if (!currentUser) return [];
+  // Viewers ALWAYS see only their own data — no exceptions
+  if (!isOwner()) {
+    return allIP.filter(ip => {
+      if (ip.source === 'borrower') {
+        const b = DB.borrowers.find(x => x.id === ip.borrowerId);
+        return b?.owner_id === currentUser.id;
+      }
+      const p = DB.ipeople.find(x => x.id === ip.id);
+      return p?.owner_id === currentUser.id;
+    });
+  }
+  // Owner filters
+  if (viewFilter === 'all') return allIP;
+  const targetId = viewFilter === 'mine' ? currentUser.id : viewFilter;
+  return allIP.filter(ip => {
+    if (ip.source === 'borrower') return DB.borrowers.find(x => x.id === ip.borrowerId)?.owner_id === targetId;
+    return DB.ipeople.find(x => x.id === ip.id)?.owner_id === targetId;
+  });
+}
+
+function renderFilterTabs(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  // Viewers NEVER see filter tabs — hide and clear
+  if (!isOwner()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const otherUsers = DB.users.filter(u => u.id !== currentUser.id);
+  if (otherUsers.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  // Always show with flex so space is reserved — no layout jump
+  el.style.display = 'flex';
+  const tabs = [{ id: 'all', label: 'All' }, { id: 'mine', label: 'My Data' }];
+  otherUsers.forEach(u => tabs.push({ id: u.id, label: u.name + "'s" }));
+  el.innerHTML = tabs.map(t =>
+    `<div class="filter-tab${viewFilter===t.id?' active':''}" onclick="setFilter('${t.id}')">${t.label}</div>`
+  ).join('');
+}
+
+function setFilter(f) {
+  viewFilter = f;
+  renderDashboard();
+  renderInterestPage();
+  renderBorrowers();
+}
+
+function renderDashboard() {
+  const borrowers = getFilteredBorrowers();
+  let totalGiven = 0, totalReturned = 0;
+  borrowers.forEach(b => {
+    totalGiven += getGiven(b.id);
+    totalReturned += getReturned(b.id);
+  });
+  const outstanding = totalGiven - totalReturned;
+  const grid = document.getElementById('summary-grid');
+  if (!grid) return;
+  grid.innerHTML = `
+    <div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(totalGiven - totalReturned)}</div><div class="sub">${borrowers.length} borrower${borrowers.length !== 1 ? 's' : ''} · amount given minus repayments</div></div>
+  `;
+  renderFilterTabs('home-filter-tabs');
+}
+
+
+function initDragHandle(handle) {
+  const card = handle.closest('.borrower-card');
+  if (!card) return;
+  let isDragging = false, startY, currentY, dragIdx, targetIdx, rafId;
+  function getClientY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+  function getCards() { return Array.from(document.querySelectorAll('#borrowers-list .borrower-card')); }
+  function onStart(e) {
+    if (e.button && e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    isDragging = true; startY = currentY = getClientY(e);
+    dragIdx = targetIdx = getCards().indexOf(card);
+    card.classList.add('is-dragging');
+    document.querySelector('.scroll-area').style.overflow = 'hidden';
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onEnd);
+  }
+  function onMove(e) {
+    if (!isDragging) return; e.preventDefault(); currentY = getClientY(e);
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const cards = getCards(); let newTarget = dragIdx;
+      for (let i = 0; i < cards.length; i++) {
+        if (cards[i] === card) continue;
+        const r = cards[i].getBoundingClientRect(), mid = r.top + r.height / 2;
+        if (i < dragIdx && currentY < mid) { newTarget = i; break; }
+        if (i > dragIdx && currentY > mid) newTarget = i;
+      }
+      cards.forEach(c => c.classList.remove('drag-above','drag-below'));
+      if (newTarget !== dragIdx) cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
+      targetIdx = newTarget;
+    });
+  }
+  function onEnd(e) {
+    if (!isDragging) return; isDragging = false;
+    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
+    card.classList.remove('is-dragging');
+    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above','drag-below'));
+    document.querySelector('.scroll-area').style.overflow = '';
+    if (targetIdx !== dragIdx) {
+      const filtered = getFilteredBorrowers();
+      const fi = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
+      const ti = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
+      if (fi !== -1 && ti !== -1) {
+        const [m] = DB.borrowers.splice(fi, 1); DB.borrowers.splice(ti, 0, m);
+        DB.borrowers.forEach((b,i) => b.sort_order = i+1);
+        renderBorrowers(); renderInterestPage(); saveSortOrder();
+      }
+    }
+  }
+  handle.addEventListener('mousedown', onStart);
+  handle.addEventListener('touchstart', onStart, { passive: false });
+}
+async function saveSortOrder() {
+  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, {sort_order: i+1}))); showToast('✅ Order saved'); }
+  catch(e) { showToast('⚠️ Could not save order'); }
+}
+
+function renderBorrowers() {
+  const cont = document.getElementById('borrowers-list');
+  renderFilterTabs('loans-filter-tabs');
+  const borrowers = getFilteredBorrowers();
+  const summaryEl = document.getElementById('loans-summary-card');
+  if (summaryEl) {
+    let tG = 0, tR = 0;
+    borrowers.forEach(b => { tG += getGiven(b.id); tR += getReturned(b.id); });
+    summaryEl.innerHTML = borrowers.length === 0 ? '' :
+      `<div class="summary-card" style="grid-column:1/-1"><div class="label">Total Lent</div><div class="value amber" style="font-size:28px">₹${fmt(tG - tR)}</div><div class="sub">${borrowers.length} borrower${borrowers.length!==1?'s':''} · amount given minus repayments</div></div>`;
+  }
+  if (borrowers.length === 0) {
+    cont.innerHTML = '<div class="empty-state"><div class="icon">🤝</div><p>No borrowers yet.<br>Tap + to add one.</p></div>';
+    return;
+  }
+  const active = borrowers.filter(b => getBalance(b.id) > 0);
+  const settled = borrowers.filter(b => getBalance(b.id) <= 0);
+  let html = active.map(b => borrowerCardHTML(b)).join('');
+  if (settled.length > 0) {
+    const isOpen = sessionStorage.getItem('settled-open') === 'true';
+    html += `<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
+      <div onclick="toggleSettledSection()" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:7px 14px;margin-bottom:${isOpen?'12px':'0'}">
+        <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
+        <span id="settled-chevron" style="color:var(--muted);font-size:12px">${isOpen ? '▲' : '▼'}</span>
+      </div>
+      <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">${settled.map(b => borrowerCardHTML(b)).join('')}</div>
+    </div>`;
+  }
+  cont.innerHTML = html;
+  borrowers.forEach(b => { const h = document.getElementById('dh-' + b.id); if (h) initDragHandle(h); });
+}
+function toggleSettledSection() {
+  const list = document.getElementById('settled-list');
+  const chev = document.getElementById('settled-chevron');
+  const btn = chev?.parentElement;
+  if (!list) return;
+  const isOpen = list.style.display !== 'none';
+  list.style.display = isOpen ? 'none' : 'block';
+  if (chev) chev.textContent = isOpen ? '▼' : '▲';
+  if (btn) btn.style.marginBottom = isOpen ? '0' : '12px';
+  sessionStorage.setItem('settled-open', !isOpen);
+}
+
+function borrowerCardHTML(b) {
+  const given = getGiven(b.id);
+  const returned = getReturned(b.id);
+  const balance = given - returned;
+  const pct = given > 0 ? Math.min(100, Math.round(returned / given * 100)) : 0;
+  const monthlyInterest = b.rate ? Math.round(b.amount * b.rate / 100) : 0;
+  const ownerUser = DB.users.find(u => u.id === b.owner_id);
+  const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
+  return `<div class="borrower-card" data-id="${b.id}" onclick="openDetail('${b.id}')">
+    <div class="borrower-card-top">
+      <div class="drag-handle" id="dh-${b.id}" title="Drag to reorder">⠿</div>
+      <div class="borrower-avatar" style="background:${b.color || '#e8b86d'}22;color:${b.color || '#e8b86d'}">${b.name[0].toUpperCase()}</div>
+      <div class="borrower-info">
+        <div class="borrower-name">${b.name}${showOwner ? ` <span style="font-size:10px;background:var(--surface2);padding:2px 6px;border-radius:8px;color:var(--muted);font-weight:500">${ownerUser.name}</span>` : ''}</div>
+        <div class="borrower-meta">${b.rate || 0}%/month · since ${formatDate(b.date)}</div>
+        ${monthlyInterest ? `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-top:2px">₹${fmt(monthlyInterest)}/month interest</div>` : ''}
+      </div>
+      <div class="borrower-amount">
+        <div class="owed" style="color:${balance<=0?'var(--accent2)':'var(--accent)'}">${balance<=0?'✓ Done':'₹'+fmt(balance)}</div>
+        <div class="label">${balance<=0?'Settled':'Outstanding'}</div>
+      </div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+// ========== DETAIL ==========
+function openDetail(id) {
+  currentBorrowerId = id;
+  const b = DB.borrowers.find(x => x.id === id);
+  const given = getGiven(id);
+  const returned = getReturned(id);
+  const balance = given - returned;
+  const interest = calcInterestAmount(b.amount || 0, b.rate || 0, b.date);
+  const payments = DB.payments.filter(p => p.borrower_id === id).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  const html = `
+    <div class="detail-header">
+      <div class="detail-avatar" style="background:${b.color||'#e8b86d'}22;color:${b.color||'#e8b86d'}">${b.name[0].toUpperCase()}</div>
+      <div class="detail-name">${b.name}</div>
+      ${b.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px;font-style:italic">"${b.notes}"</div>` : ''}
+    </div>
+    <div class="detail-stats">
+      <div class="detail-stat"><div class="val" style="color:var(--accent)">₹${fmt(given)}</div><div class="lbl">Lent</div></div>
+      <div class="detail-stat"><div class="val" style="color:var(--accent2)">₹${fmt(returned)}</div><div class="lbl">Paid</div></div>
+      <div class="detail-stat"><div class="val" style="color:${balance<=0?'var(--accent2)':'var(--danger)'}">₹${fmt(Math.max(0,balance))}</div><div class="lbl">Due</div></div>
+    </div>
+    ${b.rate > 0 ? `<div class="calc-card" style="margin-bottom:14px;padding:14px 16px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Interest Accrued</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:18px;font-weight:700;color:var(--accent)">₹${fmt(interest)}</span><div style="font-size:11px;color:var(--muted);margin-top:2px">${b.rate}%/month since ${formatDate(b.date)}</div></div>
+        <div style="text-align:right"><div style="font-size:15px;font-weight:700;color:var(--text)">₹${fmt(given + interest)}</div><div style="font-size:11px;color:var(--muted)">Total payable</div></div>
+      </div>
+    </div>` : ''}
+    ${(() => {
+      const isOwner = currentUser?.role === 'owner';
+      const isMine = b.owner_id === currentUser?.id;
+      if (!isOwner && !isMine) return '';
+      return `<div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn btn-primary" style="flex:1" onclick="openPaymentModal()">+ Payment</button>
+        ${isOwner || isMine ? `<button class="btn btn-secondary" style="width:46px;padding:0;font-size:18px" onclick="openEditModal('${id}')" title="Edit">✏️</button>` : ''}
+        ${(isOwner || isMine) ? `<button class="btn btn-danger" style="width:46px;padding:0;font-size:18px" onclick="confirmDelete('${id}')" title="Delete">🗑</button>` : ''}
+      </div>`;
+    })()}
+    <div class="section-header"><span class="section-title">Payment History</span></div>
+    <div class="calc-card" style="padding:4px 16px">
+      ${payments.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No payments yet</div>' :
+        payments.map(p => `<div class="payment-item">
+          <div class="payment-dot ${p.type==='repay'?'paid':'given'}"></div>
+          <div class="payment-info">
+            <div class="payment-info type">${p.type==='repay'?'Payment received':'Extra given'}${p.note ? ' · '+p.note : ''}</div>
+            <div class="payment-info date">${formatDate(p.date)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="payment-amt ${p.type==='repay'?'paid':'given'}">${p.type==='repay'?'+':'-'}₹${fmt(p.amount)}</div>
+            <div onclick="openEditPaymentModal('${p.id}')" style="color:var(--muted);cursor:pointer;font-size:14px;padding:4px" title="Edit">✏️</div>
+          </div>
+        </div>`).join('')}
+    </div>
+  `;
+  document.getElementById('detail-content').innerHTML = html;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-detail').classList.add('active');
+  currentPage = 'detail';
+  document.querySelector('.scroll-area').scrollTop = 0;
+}
+
+function confirmDelete(id) {
+  const b = DB.borrowers.find(x => x.id === id);
+  document.getElementById('confirm-delete-name').textContent = b?.name || 'this borrower';
+  document.getElementById('confirm-delete-id').value = id;
+  openModal('modal-confirm-delete');
+}
+async function deleteBorrower() {
+  const rawId = document.getElementById('confirm-delete-id').value;
+  try {
+    if (rawId.startsWith('IM:')) {
+      const id = rawId.slice(3);
+      await dbDelete('lb_imonths', 'id=eq.' + id);
+      DB.imonths = DB.imonths.filter(m => m.id !== id);
+      closeModal('modal-confirm-delete');
+      if (currentPage === 'idetail') openIDetail(currentBorrowerId);
+      else renderInterestPage();
+      renderDashboard();
+    } else if (rawId.startsWith('IP:')) {
+      const id = rawId.slice(3);
+      await dbDelete('lb_imonths', 'pid=eq.' + id);
+      await dbDelete('lb_ipeople', 'id=eq.' + id);
+      DB.ipeople = DB.ipeople.filter(x => x.id !== id);
+      DB.imonths = DB.imonths.filter(m => m.pid !== id);
+      closeModal('modal-confirm-delete'); navTo('interest');
+    } else {
+      await dbDelete('lb_payments', 'borrower_id=eq.' + rawId);
+      await dbDelete('lb_borrowers', 'id=eq.' + rawId);
+      DB.borrowers = DB.borrowers.filter(b => b.id !== rawId);
+      DB.payments = DB.payments.filter(p => p.borrower_id !== rawId);
+      closeModal('modal-confirm-delete'); navTo('borrowers');
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function openEditModal(id) {
+  const b = DB.borrowers.find(x => x.id === id);
+  if (!b) return;
+  document.getElementById('e-id').value = id;
+  document.getElementById('e-name').value = b.name;
+  document.getElementById('e-amount').value = b.amount ? Number(b.amount).toLocaleString('en-IN') : '';
+  document.getElementById('e-rate').value = b.rate || '';
+  document.getElementById('e-date').value = b.date || '';
+  document.getElementById('e-notes').value = b.notes || '';
+  // Set color
+  selectedColor = b.color || '#e8b86d';
+  document.querySelectorAll('#edit-color-picker .color-dot').forEach(d => {
+    d.classList.toggle('selected', d.dataset.c === selectedColor);
+  });
+  openModal('modal-edit-borrower');
+}
+async function saveEditBorrower() {
+  const id = document.getElementById('e-id').value;
+  const name = document.getElementById('e-name').value.trim();
+  const amount = parseAmount(document.getElementById('e-amount').value);
+  if (!name || !amount) { alert('Please enter a name and amount.'); return; }
+  try {
+    const data = {
+      name, amount,
+      rate: parseFloat(document.getElementById('e-rate').value) || 0,
+      date: document.getElementById('e-date').value,
+      notes: document.getElementById('e-notes').value.trim(),
+      color: selectedColor
+    };
+    await dbUpdate('lb_borrowers', id, data);
+    const idx = DB.borrowers.findIndex(b => b.id === id);
+    if (idx !== -1) DB.borrowers[idx] = { ...DB.borrowers[idx], ...data };
+    closeModal('modal-edit-borrower');
+    openDetail(id);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========== HELPERS ==========
+function getGiven(id) {
+  const b = DB.borrowers.find(x => x.id === id);
+  const extras = DB.payments.filter(p => p.borrower_id === id && p.type === 'extra').reduce((s,p) => s + p.amount, 0);
+  return (b?.amount || 0) + extras;
+}
+function getReturned(id) { return DB.payments.filter(p => p.borrower_id === id && p.type === 'repay').reduce((s,p) => s + p.amount, 0); }
+function getBalance(id) { return getGiven(id) - getReturned(id); }
+
+// Balance at the START of a given month (YYYY-MM)
+function getBalanceAsOfMonth(borrowerId, monthStr) {
+  const b = DB.borrowers.find(x => x.id === borrowerId);
+  if (!b) return 0;
+  const monthStart = new Date(monthStr + '-01');
+  const extras = DB.payments
+    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && new Date(p.date) < monthStart)
+    .reduce((s, p) => s + p.amount, 0);
+  const repaid = DB.payments
+    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && new Date(p.date) < monthStart)
+    .reduce((s, p) => s + p.amount, 0);
+  return Math.max(0, (b.amount || 0) + extras - repaid);
+}
+
+// Pro-rata interest for a specific borrower for a specific month
+function getProRataInterest(borrowerId, rate, monthStr) {
+  const [yr, mo] = monthStr.split('-').map(Number);
+  const monthStart = new Date(yr, mo - 1, 1);
+  const monthEnd = new Date(yr, mo, 1);
+  const daysInMonth = (monthEnd - monthStart) / (1000 * 60 * 60 * 24);
+
+  // Only repayments for THIS borrower within this month — the bug fix
+  const repaysThisMonth = DB.payments
+    .filter(p => {
+      if (p.borrower_id !== borrowerId || p.type !== 'repay') return false;
+      const d = new Date(p.date);
+      return d >= monthStart && d < monthEnd;
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const openingBalance = getBalanceAsOfMonth(borrowerId, monthStr);
+
+  if (repaysThisMonth.length === 0) {
+    // No repayment this month — full month interest on opening balance
+    return Math.round(openingBalance * rate / 100);
+  }
+
+  // Pro-rata: calculate interest for each segment between repayments
+  let totalInterest = 0;
+  let currentBalance = openingBalance;
+  let segmentStart = monthStart;
+
+  for (const payment of repaysThisMonth) {
+    const payDate = new Date(payment.date);
+    const days = (payDate - segmentStart) / (1000 * 60 * 60 * 24);
+    if (days > 0 && currentBalance > 0) {
+      totalInterest += currentBalance * rate / 100 / daysInMonth * days;
+    }
+    currentBalance = Math.max(0, currentBalance - payment.amount);
+    segmentStart = payDate;
+  }
+  // Remaining days after last repayment to end of month
+  const remainingDays = (monthEnd - segmentStart) / (1000 * 60 * 60 * 24);
+  if (remainingDays > 0 && currentBalance > 0) {
+    totalInterest += currentBalance * rate / 100 / daysInMonth * remainingDays;
+  }
+  return Math.round(totalInterest);
+}
+
+// Get expected interest for a person for a specific month
+function getExpectedInterest(ip, monthStr) {
+  if (ip.source === 'borrower') {
+    return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
+  }
+  // Standalone ipeople: fixed principal, no repayment tracking
+  return Math.round(ip.amount * ip.rate / 100);
+}
+
+function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
+function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}); }
+function calcInterestAmount(principal, rate, fromDate) {
+  if (!rate || !fromDate) return 0;
+  // rate is now % per month
+  const days = Math.max(0, (new Date() - new Date(fromDate)) / (1000*60*60*24));
+  const months = days / 30.44;
+  return Math.round(principal * (rate / 100) * months);
+}
+
+// ========== MODALS ==========
+// Indian number formatting: 100 → 100, 1000 → 1,000, 100000 → 1,00,000
+function formatAmountInput(el) {
+  const raw = el.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+  if (!raw) { el.value = ''; return; }
+  const n = parseInt(raw, 10);
+  el.value = n.toLocaleString('en-IN');
+}
+function parseAmount(val) {
+  return parseFloat(String(val).replace(/,/g, '')) || 0;
+}
+
+function openFab() {
+  // Always open Add Borrower from anywhere
+  if (currentPage === 'detail') { openPaymentModal(); return; }
+  const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  document.getElementById('b-date').value = today;
+  document.getElementById('b-name').value = '';
+  document.getElementById('b-amount').value = '';
+  document.getElementById('b-rate').value = '';
+  document.getElementById('b-notes').value = '';
+  selectedColor = '#e8b86d';
+  document.querySelectorAll('#color-picker .color-dot').forEach(d => d.classList.toggle('selected', d.dataset.c === selectedColor));
+  openModal('modal-borrower');
+}
+function openPaymentModal() {
+  const _d = new Date(); const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  document.getElementById('p-date').value = today;
+  document.getElementById('p-amount').value = '';
+  document.getElementById('p-note').value = '';
+  payType = 'repay';
+  document.getElementById('pchip-repay').classList.add('active');
+  document.getElementById('pchip-extra').classList.remove('active');
+  openModal('modal-payment');
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); });
+});
+
+function selectColor(el) {
+  el.closest('.colors').querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedColor = el.dataset.c;
+}
+function setPayType(t) {
+  payType = t;
+  document.getElementById('pchip-repay').classList.toggle('active', t==='repay');
+  document.getElementById('pchip-extra').classList.toggle('active', t==='extra');
+}
+
+async function saveBorrower() {
+  const name = document.getElementById('b-name').value.trim();
+  const amount = parseAmount(document.getElementById('b-amount').value);
+  if (!name || !amount) { alert('Please enter a name and amount.'); return; }
+  try {
+    const [b] = await dbInsert('lb_borrowers', {
+      name, amount,
+      rate: parseFloat(document.getElementById('b-rate').value) || 0,
+      date: document.getElementById('b-date').value,
+      notes: document.getElementById('b-notes').value.trim(),
+      color: selectedColor,
+      owner_id: currentUser.id
+    });
+    DB.borrowers.push(b);
+    closeModal('modal-borrower');
+    renderDashboard(); renderInterestPage(); renderBorrowers();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+let epType = 'repay';
+function setEpType(t) {
+  epType = t;
+  document.getElementById('epchip-repay').classList.toggle('active', t==='repay');
+  document.getElementById('epchip-extra').classList.toggle('active', t==='extra');
+}
+function openEditPaymentModal(paymentId) {
+  const p = DB.payments.find(x => x.id === paymentId);
+  if (!p) return;
+  document.getElementById('ep-id').value = paymentId;
+  document.getElementById('ep-amount').value = p.amount;
+  document.getElementById('ep-date').value = p.date;
+  document.getElementById('ep-note').value = p.note || '';
+  epType = p.type || 'repay';
+  document.getElementById('epchip-repay').classList.toggle('active', epType==='repay');
+  document.getElementById('epchip-extra').classList.toggle('active', epType==='extra');
+  openModal('modal-edit-payment');
+}
+async function saveEditPayment() {
+  const id = document.getElementById('ep-id').value;
+  const amount = parseFloat(document.getElementById('ep-amount').value);
+  const date = document.getElementById('ep-date').value;
+  if (isNaN(amount) || amount <= 0 || !date) { alert('Please enter a valid amount and date.'); return; }
+  try {
+    const data = { amount, date, type: epType, note: document.getElementById('ep-note').value.trim() };
+    await dbUpdate('lb_payments', id, data);
+    const idx = DB.payments.findIndex(x => x.id === id);
+    if (idx !== -1) DB.payments[idx] = { ...DB.payments[idx], ...data };
+    closeModal('modal-edit-payment');
+    openDetail(currentBorrowerId);
+    renderDashboard(); renderInterestPage();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+async function deletePayment() {
+  const id = document.getElementById('ep-id').value;
+  try {
+    await dbDelete('lb_payments', 'id=eq.' + id);
+    DB.payments = DB.payments.filter(p => p.id !== id);
+    closeModal('modal-edit-payment');
+    openDetail(currentBorrowerId);
+    renderDashboard(); renderInterestPage();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function savePayment() {
+  const amount = parseAmount(document.getElementById('p-amount').value);
+  const date = document.getElementById('p-date').value;
+  if (!amount || amount <= 0 || !date) { alert('Please enter a valid amount and date.'); return; }
+  try {
+    const [p] = await dbInsert('lb_payments', {
+      borrower_id: currentBorrowerId,
+      type: payType, amount, date,
+      note: document.getElementById('p-note').value.trim()
+    });
+    DB.payments.push(p);
+    closeModal('modal-payment');
+    openDetail(currentBorrowerId);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========== INTEREST TRACKER ==========
+function monthKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+function monthLabel(key) { const [y,m] = key.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'short',year:'numeric'}); }
+function shortMonth(key) { const [y,m] = key.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'short'}); }
+
+let gridYear = new Date().getFullYear();
+
+// Merge borrowers-with-rate + standalone ipeople into one unified list
+function getAllIpeople() {
+  const fromBorrowers = DB.borrowers
+    .filter(b => b.rate > 0 && getBalance(b.id) > 0) // exclude settled borrowers
+    .map(b => ({
+      id: 'B:' + b.id,
+      name: b.name,
+      amount: b.amount,
+      rate: b.rate,
+      start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
+      color: b.color || '#e8b86d',
+      source: 'borrower',
+      borrowerId: b.id
+    }));
+  const standalone = DB.ipeople.map(ip => ({ ...ip, source: 'iperson' }));
+  return [...fromBorrowers, ...standalone];
+}
+
+function changeYear(delta) {
+  gridYear += delta;
+  renderInterestPage();
+}
+
+function renderInterestPage() {
+  const now = new Date();
+  const thisMonth = monthKey(now);
+  const allPeople = getFilteredIpeople();
+  renderFilterTabs('interest-filter-tabs');
+
+  // Summary
+  // Last month key
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = monthKey(lastMonthDate);
+  const lastMonthLabel = lastMonthDate.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
+
+  let totalExpected = 0, totalReceived = 0, pendingCount = 0;
+  allPeople.forEach(ip => {
+    const ipStart = ip.start || '2026-01';
+    if (lastMonth < ipStart) return; // person hadn't started yet in last month — skip
+    const exp = getExpectedInterest(ip, lastMonth);
+    const rec = DB.imonths.find(m => m.pid === ip.id && m.month === lastMonth);
+    totalExpected += exp;
+    if (rec) totalReceived += rec.amount; else pendingCount++;
+  });
+
+  // Cumulative pending: sum of all unpaid months from Jan 2026 onwards, up to and including last month
+  const CUMULATIVE_START = '2026-01';
+  let cumulativePending = 0;
+  allPeople.forEach(ip => {
+    const ipStart = ip.start || CUMULATIVE_START;
+    const rangeStart = ipStart > CUMULATIVE_START ? ipStart : CUMULATIVE_START;
+    let cur = new Date(rangeStart + '-01');
+    const cumulativeCutoff = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
+    while (cur < cumulativeCutoff) {
+      const mk = monthKey(cur);
+      const exp = getExpectedInterest(ip, mk);
+      const rec = DB.imonths.find(m => m.pid === ip.id && m.month === mk);
+      if (!rec) cumulativePending += exp;
+      cur.setMonth(cur.getMonth() + 1);
+    }
+  });
+
+  // Next month = current month's pro-rata interest (collected next month)
+  const nextMonthLabel = now.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
+  const nextCollectLabel = new Date(now.getFullYear(), now.getMonth()+1, 1).toLocaleDateString('en-IN', {month:'short'});
+  let totalExpectedNext = 0;
+  allPeople.forEach(ip => {
+    if (thisMonth < (ip.start || '2026-01')) return;
+    totalExpectedNext += getExpectedInterest(ip, thisMonth);
+  });
+
+  const summaryHTML = `
+    <div class="summary-card"><div class="label">Expected This Month</div><div class="value amber">₹${fmt(totalExpected)}</div><div class="sub">Collect in ${now.toLocaleDateString('en-IN',{month:'short'})} · for ${lastMonthLabel}</div></div>
+    <div class="summary-card"><div class="label">Expected Next Month</div><div class="value amber" style="opacity:0.75">₹${fmt(totalExpectedNext)}</div><div class="sub">Collect in ${nextCollectLabel} · for ${nextMonthLabel}</div></div>
+    <div class="summary-card"><div class="label">Received</div><div class="value green">₹${fmt(totalReceived)}</div><div class="sub">${lastMonthLabel}</div></div>
+    <div class="summary-card"><div class="label">Pending</div><div class="value red">₹${fmt(totalExpected - totalReceived)}</div><div class="sub">${lastMonthLabel} · <span style="font-size:10px">${pendingCount} people not paid</span></div></div>
+  `;
+  const cumulativeHTML = cumulativePending > 0
+    ? `<div class="summary-card" style="grid-column:1/-1;background:rgba(232,112,109,0.08);border-color:rgba(232,112,109,0.25)">
+        <div class="label">📋 Cumulative Interest Pending (since Jan 2026)</div>
+        <div class="value red" style="font-size:26px">₹${fmt(cumulativePending)}</div>
+        <div class="sub">Unpaid months across all people up to last month</div>
+      </div>`
+    : `<div class="summary-card" style="grid-column:1/-1;background:rgba(91,196,160,0.08);border-color:rgba(91,196,160,0.25)">
+        <div class="label">📋 Cumulative Interest Pending (since Jan 2026)</div>
+        <div class="value green" style="font-size:26px">₹0</div>
+        <div class="sub">All past months are settled ✓</div>
+      </div>`;
+
+  // Write to both interest tab and home tab
+  ['interest-summary-grid', 'home-interest-summary-grid'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.innerHTML = summaryHTML;
+  });
+  ['interest-cumulative-card', 'home-interest-cumulative-card'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.innerHTML = cumulativeHTML;
+  });
+  ['grid-year-label', 'home-grid-year-label'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = gridYear;
+  });
+
+  const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const curMonthKey = monthKey(now);
+
+  let gridHTML;
+  if (allPeople.length === 0) {
+    gridHTML = `<div class="sgrid"><div class="sgrid-empty">No interest people yet.<br>Add from Loans tab or tap +</div></div>`;
+  } else {
+    let html = `<div class="sgrid">`;
+    html += `<div class="sgrid-head">
+      <div class="sgrid-head-name">Person</div>
+      ${MONTHS.map((m,i) => {
+        const mk = `${gridYear}-${m}`;
+        return `<div class="sgrid-head-month${mk===curMonthKey?' cur-month':''}">${MONTH_NAMES[i]}</div>`;
+      }).join('')}
+    </div>`;
+    allPeople.forEach(ip => {
+      html += `<div class="sgrid-row">`;
+      const ipOwner = ip.source === 'borrower'
+        ? DB.borrowers.find(b => b.id === ip.borrowerId)?.owner_id
+        : DB.ipeople.find(p => p.id === ip.id)?.owner_id;
+      const ipOwnerName = currentUser?.role === 'owner' && viewFilter !== 'mine' && ipOwner && ipOwner !== currentUser.id
+        ? (DB.users.find(u => u.id === ipOwner)?.name || '') : '';
+      html += `<div class="sgrid-name" onclick="openIDetail('${ip.id}')">
+        <div class="sgrid-dot" style="background:${ip.color||'#5bc4a0'}"></div>
+        <div style="overflow:hidden">
+          <div class="sgrid-name-text">${ip.name}</div>
+          ${ipOwnerName ? `<div style="font-size:9px;color:var(--muted)">${ipOwnerName}</div>` : ''}
+        </div>
+      </div>`;
+      MONTHS.forEach(m => {
+        const mk = `${gridYear}-${m}`;
+        const startMk = ip.start || '2020-01';
+        const isFuture = mk >= curMonthKey;
+        const beforeStart = mk < startMk;
+        if (beforeStart) {
+          html += `<div class="sgrid-cell s-nointerest"><div class="sgrid-cell-inner" style="color:var(--border)">—</div></div>`;
+          return;
+        }
+        if (isFuture) {
+          html += `<div class="sgrid-cell s-future"><div class="sgrid-cell-inner">·</div></div>`;
+          return;
+        }
+        const rec = DB.imonths.find(r => r.pid === ip.id && r.month === mk);
+        if (rec) {
+          html += `<div class="sgrid-cell s-received" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(rec.amount)} received · tap to undo"><div class="sgrid-cell-inner">✅</div></div>`;
+        } else {
+          const cellExp = getExpectedInterest(ip, mk);
+          html += `<div class="sgrid-cell s-pending" ontouchstart="cellTouchStart(event,'${ip.id}','${mk}')" ontouchmove="cellTouchMove(event)" ontouchend="cellTouchEnd(event,'${ip.id}','${mk}')" onclick="toggleIMonth('${ip.id}','${mk}')" title="₹${fmt(cellExp)} expected · tap to mark"><div class="sgrid-cell-inner">❌</div></div>`;
+        }
+      });
+      html += `</div>`;
+    });
+    html += `</div>`;
+    gridHTML = html;
+  }
+
+  ['interest-grid-wrap', 'home-interest-grid-wrap'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.innerHTML = gridHTML;
+  });
+}
+
+let _tY=0,_tX=0,_tM=false;
+function cellTouchStart(e,p,m){_tY=e.touches[0].clientY;_tX=e.touches[0].clientX;_tM=false;}
+function cellTouchMove(e){if(Math.abs(e.touches[0].clientY-_tY)>8||Math.abs(e.touches[0].clientX-_tX)>8)_tM=true;}
+function cellTouchEnd(e,p,m){if(_tM)return;e.preventDefault();toggleIMonth(p,m);}
+
+function toggleIMonth(pid, month) {
+  // Find person (could be borrower-linked or standalone)
+  const allPeople = getAllIpeople();
+  const ip = allPeople.find(x => x.id === pid);
+  if (!ip) return;
+  // Check permissions: viewers can only mark their own people
+  if (currentUser?.role !== 'owner') {
+    const isOwnBorrower = ip.source === 'borrower' && DB.borrowers.find(b => b.id === ip.borrowerId)?.owner_id === currentUser?.id;
+    const isOwnIPerson = ip.source === 'iperson' && DB.ipeople.find(p => p.id === ip.id)?.owner_id === currentUser?.id;
+    if (!isOwnBorrower && !isOwnIPerson) { showToast('⚠️ You can only mark your own people'); return; }
+  }
+  const existing = DB.imonths.find(m => m.pid === pid && m.month === month);
+  if (existing) {
+    // Already received — ask to undo
+    document.getElementById('confirm-delete-name').textContent = `${ip.name} – ${monthLabel(month)} interest`;
+    document.getElementById('confirm-delete-id').value = 'IM:' + existing.id;
+    openModal('modal-confirm-delete');
+  } else {
+    // Mark as received — open quick modal
+    openIMonthModal(pid, month);
+  }
+}
+
+function openIDetail(id) {
+  currentBorrowerId = id;
+  const allPeople = getAllIpeople();
+  const ip = allPeople.find(x => x.id === id);
+  if (!ip) return;
+  const now = new Date();
+  const exp = getExpectedInterest(ip, monthKey(now));
+  const start = new Date((ip.start || monthKey(now)) + '-01');
+  const months = [];
+  let cur = new Date(start);
+  const lastActionable = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
+  while (cur < lastActionable) { months.push(monthKey(cur)); cur.setMonth(cur.getMonth()+1); }
+  const received = DB.imonths.filter(m => m.pid === id);
+  const totalReceived = received.reduce((s,m) => s+m.amount, 0);
+  const pendingMonths = months.filter(mo => !received.find(r => r.month === mo));
+
+  const html = `
+    <div class="detail-header">
+      <div class="detail-avatar" style="background:${ip.color||'#5bc4a0'}22;color:${ip.color||'#5bc4a0'}">${ip.name[0].toUpperCase()}</div>
+      <div class="detail-name">${ip.name}</div>
+      <div class="detail-contact">${ip.source==='borrower'?'From Loans tab':''}</div>
+    </div>
+    <div class="detail-stats">
+      <div class="detail-stat"><div class="val" style="color:var(--accent)">₹${fmt(ip.amount)}</div><div class="lbl">Principal</div></div>
+      <div class="detail-stat"><div class="val" style="color:var(--text)">${Number(ip.rate.toFixed(2))}%</div><div class="lbl">Per Month</div></div>
+      <div class="detail-stat"><div class="val" style="color:var(--accent2)">₹${fmt(exp)}</div><div class="lbl">Monthly Due</div></div>
+    </div>
+    <div class="calc-card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Total Received</span>
+        <span style="font-size:11px;color:var(--muted)">${received.length}/${months.length} months</span>
+      </div>
+      <div style="font-size:24px;font-weight:700;color:var(--accent2)">₹${fmt(totalReceived)}</div>
+      <div style="font-size:12px;color:var(--danger);margin-top:4px">${pendingMonths.length} month${pendingMonths.length!==1?'s':''} pending · ₹${fmt(pendingMonths.reduce((s,mo) => s + getExpectedInterest(ip, mo), 0))}</div>
+    </div>
+    ${(() => {
+      const isMineIPerson = ip.source === 'iperson' && DB.ipeople.find(x => x.id === ip.id)?.owner_id === currentUser?.id;
+      const canEdit = isOwner() || isMineIPerson;
+      const canDelete = isOwner() || isMineIPerson;
+      if (ip.source === 'borrower') return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--muted)">Edit this person's details in the <span style="color:var(--accent);cursor:pointer" onclick="openDetail('${ip.borrowerId}')">Loans tab →</span></div>`;
+      if (!canEdit) return '';
+      return `<div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn btn-secondary" style="flex:1" onclick="openIPersonModal('${ip.id}')">✏️ Edit</button>
+        ${canDelete ? `<button class="btn btn-danger" style="flex:1" onclick="confirmDeleteIP('${ip.id}')">🗑 Delete</button>` : ''}
+      </div>`;
+    })()}
+    <div class="section-header"><span class="section-title">Receipt Log</span></div>
+    <div class="calc-card" style="padding:4px 16px">
+      ${received.length===0?'<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No receipts yet.<br>Tap ❌ on the grid to mark months.</div>':
+        received.sort((a,b)=>b.month.localeCompare(a.month)).map(r=>`
+        <div class="payment-item">
+          <div class="payment-dot paid"></div>
+          <div class="payment-info"><div class="payment-info type">${monthLabel(r.month)}${r.note?' · '+r.note:''}</div><div class="payment-info date">Interest received</div></div>
+          <div class="payment-amt paid">+₹${fmt(r.amount)}</div>
+        </div>`).join('')}
+    </div>
+  `;
+  document.getElementById('idetail-content').innerHTML = html;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-idetail').classList.add('active');
+  document.getElementById('nav-interest').classList.add('active');
+  currentPage = 'idetail';
+  document.querySelector('.scroll-area').scrollTop = 0;
+}
+
+function openIPersonModal(editId) {
+  const today = new Date();
+  document.getElementById('iperson-modal-title').textContent = editId ? 'Edit Interest Person' : 'Add Interest Person';
+  document.getElementById('ip-id').value = editId || '';
+  if (editId) {
+    const ip = DB.ipeople.find(x => x.id === editId);
+    document.getElementById('ip-name').value = ip.name;
+    document.getElementById('ip-amount').value = ip.amount ? Number(ip.amount).toLocaleString('en-IN') : '';
+    document.getElementById('ip-rate').value = ip.rate;
+    document.getElementById('ip-start').value = ip.start;
+    document.getElementById('ip-notes').value = ip.notes||'';
+    selectedColor = ip.color||'#5bc4a0';
+  } else {
+    document.getElementById('ip-name').value='';
+    document.getElementById('ip-amount').value=''; document.getElementById('ip-rate').value='';
+    document.getElementById('ip-start').value=monthKey(today); document.getElementById('ip-notes').value='';
+    selectedColor = '#5bc4a0';
+  }
+  document.querySelectorAll('#iperson-color-picker .color-dot').forEach(d => d.classList.toggle('selected', d.dataset.c===selectedColor));
+  openModal('modal-iperson');
+}
+async function saveIPerson() {
+  const id = document.getElementById('ip-id').value;
+  const name = document.getElementById('ip-name').value.trim();
+  const amount = parseAmount(document.getElementById('ip-amount').value);
+  const rate = parseFloat(document.getElementById('ip-rate').value);
+  if (!name || !amount || isNaN(rate)) { alert('Please fill name, amount and rate.'); return; }
+  const data = { name, amount, rate,
+    start: document.getElementById('ip-start').value,
+    notes: document.getElementById('ip-notes').value.trim(),
+    color: selectedColor,
+    owner_id: currentUser.id };
+  try {
+    if (id) {
+      await dbUpdate('lb_ipeople', id, data);
+      const idx = DB.ipeople.findIndex(x => x.id === id);
+      DB.ipeople[idx] = { ...DB.ipeople[idx], ...data };
+    } else {
+      const [ip] = await dbInsert('lb_ipeople', data);
+      DB.ipeople.push(ip);
+    }
+    closeModal('modal-iperson'); renderInterestPage(); renderDashboard();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function openIMonthModal(pid, prefillMonth) {
+  const allPeople = getAllIpeople();
+  const ip = allPeople.find(x => x.id === pid);
+  document.getElementById('im-pid').value = pid;
+  document.getElementById('im-month').value = prefillMonth || monthKey(new Date());
+  const autoAmt = ip ? Math.round(ip.amount * ip.rate / 100) : 0;
+  document.getElementById('im-amount').value = autoAmt ? autoAmt.toLocaleString('en-IN') : '';
+  document.getElementById('im-note').value = '';
+  openModal('modal-imonth');
+}
+async function saveIMonth() {
+  const pid = document.getElementById('im-pid').value;
+  const month = document.getElementById('im-month').value;
+  const amount = parseAmount(document.getElementById('im-amount').value);
+  if (!month || !amount) { alert('Please fill month and amount.'); return; }
+  try {
+    const existing = DB.imonths.find(m => m.pid === pid && m.month === month);
+    if (existing) {
+      await dbDelete('lb_imonths', 'id=eq.' + existing.id);
+      DB.imonths = DB.imonths.filter(m => m.id !== existing.id);
+    }
+    const [rec] = await dbInsert('lb_imonths', { pid, month, amount, note: document.getElementById('im-note').value.trim() });
+    DB.imonths.push(rec);
+    closeModal('modal-imonth');
+    if (currentPage === 'idetail') openIDetail(currentBorrowerId);
+    else renderInterestPage();
+    renderDashboard();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function confirmDeleteIP(id) {
+  const ip = DB.ipeople.find(x => x.id === id);
+  document.getElementById('confirm-delete-name').textContent = ip?.name || 'this person';
+  document.getElementById('confirm-delete-id').value = 'IP:' + id;
+  openModal('modal-confirm-delete');
+}
+
+// ========== SETTINGS ==========
+function renderSettings() {
+  if (!currentUser) return;
+  document.getElementById('s-username').textContent = currentUser.name;
+  document.getElementById('s-role').textContent = currentUser.role === 'owner' ? 'Owner' : 'Family';
+  document.getElementById('s-invite').textContent = DB.inviteCode;
+
+  const ownerPanel = document.getElementById('owner-settings');
+
+  // Only real owners can see the manage panel
+  if (isOwner()) {
+    ownerPanel.style.display = 'block';
+    const ml = document.getElementById('members-list');
+    if (DB.users.length === 0) { ml.innerHTML = '<div style="color:var(--muted);font-size:13px">No members yet</div>'; return; }
+    ml.innerHTML = DB.users.map(u => `
+      <div class="settings-item">
+        <div>
+          <div class="s-label">${u.name}</div>
+          <div class="s-sub">${u.role === 'owner' ? 'Owner — sees all data' : 'Family — sees only their own data'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${u.id !== currentUser.id ? `
+            <div onclick="toggleUserRole('${u.id}','${u.name}','${u.role}')" 
+                 class="tag ${u.role==='owner'?'tag-amber':'tag-green'}" 
+                 style="cursor:pointer" title="Tap to change role">
+              ${u.role === 'owner' ? 'Owner' : 'Family'} ✎
+            </div>
+            <div onclick="confirmDeleteUser('${u.id}','${u.name}')" style="color:var(--danger);cursor:pointer;font-size:20px;line-height:1" title="Delete user">🗑</div>
+          ` : `<div class="tag tag-amber">Owner</div><div style="font-size:11px;color:var(--muted)">(you)</div>`}
+        </div>
+      </div>`).join('');
+  } else {
+    // Family users — hide manage panel completely
+    ownerPanel.style.display = 'none';
+    // Also hide invite code section for family
+    document.getElementById('s-invite').closest('.settings-item').style.display = 'none';
+  }
+}
+
+function confirmDeleteUser(userId, userName) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can delete users'); return; }
+  if (!confirm(`Delete user "${userName}"?\n\nThis will remove their account but keep their data. This cannot be undone.`)) return;
+  deleteUser(userId, userName);
+}
+
+async function deleteUser(userId, userName) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can delete users'); return; }
+  try {
+    await dbDelete('lb_users', 'id=eq.' + userId);
+    DB.users = DB.users.filter(u => u.id !== userId);
+    showToast(`✅ ${userName} deleted`);
+    renderSettings();
+  } catch(e) { alert('Error deleting user: ' + e.message); }
+}
+
+async function toggleUserRole(userId, userName, currentRole) {
+  if (!isOwner()) { showToast('⚠️ Only the owner can change roles'); return; }
+  const newRole = currentRole === 'owner' ? 'viewer' : 'owner';
+  const newLabel = newRole === 'owner' ? 'Owner' : 'Family';
+  if (!confirm(`Change ${userName}'s role to "${newLabel}"?\n\n${newRole === 'viewer' ? userName + ' will only see their own data.' : userName + ' will be able to see all data.'}`)) return;
+  try {
+    await dbUpdate('lb_users', userId, { role: newRole });
+    const idx = DB.users.findIndex(u => u.id === userId);
+    if (idx !== -1) DB.users[idx].role = newRole;
+    showToast(`✅ ${userName} is now ${newLabel}`);
+    renderSettings();
+  } catch(e) { alert('Error changing role: ' + e.message); }
+}
+function copyInvite() {
+  navigator.clipboard?.writeText(DB.inviteCode).then(() => alert('Invite code copied: ' + DB.inviteCode)).catch(() => alert('Your invite code: ' + DB.inviteCode));
+}
+
+function openChangePinModal() {
+  document.getElementById('cp-current').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('cp-error').textContent = '';
+  openModal('modal-change-pin');
+}
+
+async function saveChangePin() {
+  const current = document.getElementById('cp-current').value;
+  const newPin = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+  const errEl = document.getElementById('cp-error');
+  errEl.textContent = '';
+
+  if (current !== currentUser.pin) { errEl.textContent = 'Current PIN is incorrect.'; return; }
+  if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) { errEl.textContent = 'New PIN must be exactly 4 digits.'; return; }
+  if (newPin !== confirm) { errEl.textContent = 'PINs do not match.'; return; }
+  if (newPin === current) { errEl.textContent = 'New PIN must be different from current PIN.'; return; }
+
+  try {
+    await dbUpdate('lb_users', currentUser.id, { pin: newPin });
+    currentUser.pin = newPin;
+    const idx = DB.users.findIndex(u => u.id === currentUser.id);
+    if (idx !== -1) DB.users[idx].pin = newPin;
+    closeModal('modal-change-pin');
+    showToast('✅ PIN updated successfully!');
+  } catch(e) { errEl.textContent = 'Error: ' + e.message; }
+}
+function showNotifications() {
+  const overdue = DB.borrowers.filter(b => getBalance(b.id) > 0);
+  if (overdue.length === 0) { alert('✅ All loans are settled!'); return; }
+  const msg = overdue.map(b => `• ${b.name}: ₹${fmt(getBalance(b.id))} pending`).join('\n');
+  alert('📋 Outstanding Loans:\n\n' + msg);
+}
+
+// ========== EXPORT / IMPORT ==========
+function exportData() {
+  const json = JSON.stringify(DB, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'loanbook-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportApp() {
+  const html = document.documentElement.outerHTML;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'loanbook-' + new Date().toISOString().slice(0,10) + '.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported.borrowers) { showToast('❌ Invalid backup file'); return; }
+      showToast('⏳ Importing data...');
+      // Insert borrowers
+      for (const b of imported.borrowers) {
+        const { id, created_at, ...data } = b;
+        await dbInsert('lb_borrowers', data).catch(()=>{});
+      }
+      // Insert payments
+      for (const p of imported.payments || []) {
+        const { id, created_at, ...data } = p;
+        await dbInsert('lb_payments', data).catch(()=>{});
+      }
+      for (const ip of imported.ipeople || []) {
+        const { id, created_at, ...data } = ip;
+        await dbInsert('lb_ipeople', data).catch(()=>{});
+      }
+      for (const im of imported.imonths || []) {
+        const { id, created_at, ...data } = im;
+        await dbInsert('lb_imonths', data).catch(()=>{});
+      }
+      await loadAllData();
+      showToast('✅ Import done!');
+      renderDashboard(); renderInterestPage();
+    } catch(err) { showToast('❌ Import failed: ' + err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--surface2);color:var(--text);padding:12px 20px;border-radius:12px;font-size:14px;font-weight:500;z-index:999;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity 0.3s;white-space:nowrap;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
+}
+
+// ========== INIT ==========
+(async () => {
+  const savedName = localStorage.getItem('loanbook_name');
+  if (savedName) {
+    document.getElementById('login-name').value = savedName;
+    document.getElementById('login-pin').focus();
+  }
+})();
+</script>
+</body>
+</html>
