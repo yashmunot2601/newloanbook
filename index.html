@@ -1309,14 +1309,20 @@ function getBalance(id) { return getGiven(id) - getReturned(id); }
 function getBalanceAsOfMonth(borrowerId, monthStr) {
   const b = DB.borrowers.find(x => x.id === borrowerId);
   if (!b) return 0;
-  const monthStart = new Date(monthStr + '-01');
+  const monthStart = parseLocalDate(monthStr + '-01');
   const extras = DB.payments
-    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && new Date(p.date) < monthStart)
+    .filter(p => p.borrower_id === borrowerId && p.type === 'extra' && parseLocalDate(p.date) < monthStart)
     .reduce((s, p) => s + p.amount, 0);
   const repaid = DB.payments
-    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && new Date(p.date) < monthStart)
+    .filter(p => p.borrower_id === borrowerId && p.type === 'repay' && parseLocalDate(p.date) < monthStart)
     .reduce((s, p) => s + p.amount, 0);
   return Math.max(0, (b.amount || 0) + extras - repaid);
+}
+
+// Parse date string as local midnight (avoids UTC timezone shift bugs)
+function parseLocalDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
 }
 
 // Pro-rata interest for a specific borrower for a specific month
@@ -1326,29 +1332,26 @@ function getProRataInterest(borrowerId, rate, monthStr) {
   const monthEnd = new Date(yr, mo, 1);
   const daysInMonth = (monthEnd - monthStart) / (1000 * 60 * 60 * 24);
 
-  // Only repayments for THIS borrower within this month — the bug fix
   const repaysThisMonth = DB.payments
     .filter(p => {
       if (p.borrower_id !== borrowerId || p.type !== 'repay') return false;
-      const d = new Date(p.date);
+      const d = parseLocalDate(p.date);
       return d >= monthStart && d < monthEnd;
     })
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+    .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
 
   const openingBalance = getBalanceAsOfMonth(borrowerId, monthStr);
 
   if (repaysThisMonth.length === 0) {
-    // No repayment this month — full month interest on opening balance
     return Math.round(openingBalance * rate / 100);
   }
 
-  // Pro-rata: calculate interest for each segment between repayments
   let totalInterest = 0;
   let currentBalance = openingBalance;
   let segmentStart = monthStart;
 
   for (const payment of repaysThisMonth) {
-    const payDate = new Date(payment.date);
+    const payDate = parseLocalDate(payment.date);
     const days = (payDate - segmentStart) / (1000 * 60 * 60 * 24);
     if (days > 0 && currentBalance > 0) {
       totalInterest += currentBalance * rate / 100 / daysInMonth * days;
@@ -1356,7 +1359,6 @@ function getProRataInterest(borrowerId, rate, monthStr) {
     currentBalance = Math.max(0, currentBalance - payment.amount);
     segmentStart = payDate;
   }
-  // Remaining days after last repayment to end of month
   const remainingDays = (monthEnd - segmentStart) / (1000 * 60 * 60 * 24);
   if (remainingDays > 0 && currentBalance > 0) {
     totalInterest += currentBalance * rate / 100 / daysInMonth * remainingDays;
@@ -1522,6 +1524,8 @@ async function savePayment() {
     DB.payments.push(p);
     closeModal('modal-payment');
     openDetail(currentBorrowerId);
+    renderDashboard();
+    renderInterestPage();
   } catch(e) { alert('Error: ' + e.message); }
 }
 
