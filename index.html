@@ -1143,7 +1143,7 @@ function borrowerCardHTML(b) {
   const returned = getReturned(b.id);
   const balance = given - returned;
   const pct = given > 0 ? Math.min(100, Math.round(returned / given * 100)) : 0;
-  const monthlyInterest = b.rate ? Math.round(b.amount * b.rate / 100) : 0;
+  const monthlyInterest = b.rate ? Math.round(balance * b.rate / 100) : 0;
   const ownerUser = DB.users.find(u => u.id === b.owner_id);
   const showOwner = currentUser?.role === 'owner' && viewFilter !== 'mine' && ownerUser && ownerUser.id !== currentUser.id;
   return `<div class="borrower-card" data-id="${b.id}" onclick="openDetail('${b.id}')">
@@ -1881,7 +1881,7 @@ function openIMonthModal(pid, prefillMonth) {
   const ip = allPeople.find(x => x.id === pid);
   document.getElementById('im-pid').value = pid;
   document.getElementById('im-month').value = prefillMonth || monthKey(new Date());
-  const autoAmt = ip ? Math.round(ip.amount * ip.rate / 100) : 0;
+  const autoAmt = ip ? (ip.source === 'borrower' ? getProRataInterest(ip.borrowerId, ip.rate, prefillMonth || monthKey(new Date())) : Math.round(ip.amount * ip.rate / 100)) : 0;
   document.getElementById('im-amount').value = autoAmt ? autoAmt.toLocaleString('en-IN') : '';
   document.getElementById('im-note').value = '';
   openModal('modal-imonth');
