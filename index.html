@@ -1115,10 +1115,10 @@ function renderBorrowers() {
   let html = active.map(b => borrowerCardHTML(b)).join('');
   if (settled.length > 0) {
     const isOpen = sessionStorage.getItem('settled-open') === 'true';
-    html += `<div style="margin-top:20px">
-      <div onclick="toggleSettledSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-top:1px solid var(--border)">
-        <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
-        <span id="settled-chevron" style="color:var(--muted);font-size:16px">${isOpen ? '▲' : '▼'}</span>
+    html += `<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
+      <div onclick="toggleSettledSection()" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:7px 14px;margin-bottom:${isOpen?'12px':'0'}">
+        <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px">✓ Settled (${settled.length})</span>
+        <span id="settled-chevron" style="color:var(--muted);font-size:12px">${isOpen ? '▲' : '▼'}</span>
       </div>
       <div id="settled-list" style="display:${isOpen ? 'block' : 'none'}">${settled.map(b => borrowerCardHTML(b)).join('')}</div>
     </div>`;
@@ -1129,10 +1129,12 @@ function renderBorrowers() {
 function toggleSettledSection() {
   const list = document.getElementById('settled-list');
   const chev = document.getElementById('settled-chevron');
+  const btn = chev?.parentElement;
   if (!list) return;
   const isOpen = list.style.display !== 'none';
   list.style.display = isOpen ? 'none' : 'block';
   if (chev) chev.textContent = isOpen ? '▼' : '▲';
+  if (btn) btn.style.marginBottom = isOpen ? '0' : '12px';
   sessionStorage.setItem('settled-open', !isOpen);
 }
 
@@ -1526,12 +1528,12 @@ let gridYear = new Date().getFullYear();
 // Merge borrowers-with-rate + standalone ipeople into one unified list
 function getAllIpeople() {
   const fromBorrowers = DB.borrowers
-    .filter(b => b.rate > 0)
+    .filter(b => b.rate > 0 && getBalance(b.id) > 0) // exclude settled borrowers
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
       amount: b.amount,
-      rate: b.rate,   // already monthly %
+      rate: b.rate,
       start: b.date ? b.date.substring(0,7) : monthKey(new Date()),
       color: b.color || '#e8b86d',
       source: 'borrower',
