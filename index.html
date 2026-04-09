@@ -925,10 +925,8 @@ function enterApp() {
   document.getElementById('dash-name').textContent = currentUser.name;
   if (currentUser.role === 'viewer') {
     document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
-    viewFilter = 'mine';
-  } else {
-    viewFilter = 'all';
   }
+  viewFilter = 'mine';
   document.getElementById('fab-btn').style.display = 'flex';
   // Always go to home page on login regardless of previous page
   navTo('home');
@@ -1543,7 +1541,7 @@ let gridYear = new Date().getFullYear();
 // Merge borrowers-with-rate + standalone ipeople into one unified list
 function getAllIpeople() {
   const fromBorrowers = DB.borrowers
-    .filter(b => b.rate > 0 && getBalance(b.id) > 0) // exclude settled borrowers
+    .filter(b => b.rate > 0 && (getBalance(b.id) > 0 || getBalanceAsOfMonth(b.id, monthKey(new Date())) > 0)) // include if unsettled OR had opening balance this month (so pro-rata interest for current month is counted)
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
@@ -1619,10 +1617,13 @@ function renderInterestPage() {
 
   // ── EXPECTED NEXT MONTH (collect in May, for April = this month) ─────────
   // Rule: Pro-rata based on repayments within April only.
-  // If repaid ₹4L on Apr 9, interest = (₹5L × rate × 8/30) + (₹1L × rate × 22/30)
+  // Use filteredForLastMonth (all-inclusive) so borrowers who repaid mid-month
+  // are still counted for their pro-rata interest this month.
   let totalExpectedNext = 0;
-  allPeople.forEach(ip => {
+  filteredForLastMonth.forEach(ip => {
     if (thisMonth < (ip.start || '2026-01')) return;
+    // Skip borrowers fully settled before this month started
+    if (ip.source === 'borrower' && getBalanceAsOfMonth(ip.borrowerId, thisMonth) <= 0) return;
     totalExpectedNext += getExpectedInterest(ip, thisMonth);
   });
 
