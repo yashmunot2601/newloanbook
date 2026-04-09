@@ -139,6 +139,13 @@
   /* PAGES */
   .page { display: none; }
   .page.active { display: block; }
+  #page-detail, #page-idetail {
+    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
+  }
+  #page-detail.swiping, #page-idetail.swiping {
+    transition: none;
+  }
 
   /* DASHBOARD */
   .greeting { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
@@ -2093,6 +2100,92 @@ function showToast(msg) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
 }
+
+// ========== SWIPE BACK GESTURE ==========
+(function() {
+  const SWIPE_PAGES = ['page-detail', 'page-idetail'];
+  const EDGE_THRESHOLD = 40;   // px from left edge to start gesture
+  const COMPLETE_THRESHOLD = 100; // px drag to trigger back
+
+  let touchStartX = 0, touchStartY = 0;
+  let activePage = null;
+  let dragging = false;
+  let axisLocked = false; // true = horizontal swipe, false = could be scroll
+
+  document.addEventListener('touchstart', e => {
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    dragging = false;
+    axisLocked = false;
+    activePage = null;
+
+    // Only start if touch begins within edge threshold
+    if (touchStartX > EDGE_THRESHOLD) return;
+
+    // Find which swipe page is currently active
+    for (const pid of SWIPE_PAGES) {
+      const el = document.getElementById(pid);
+      if (el && el.classList.contains('active')) {
+        activePage = el;
+        break;
+      }
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!activePage) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartX;
+    const dy = touch.clientY - touchStartY;
+
+    // Lock axis on first significant move
+    if (!axisLocked) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      axisLocked = true;
+      // If mostly vertical, abandon gesture
+      if (Math.abs(dy) > Math.abs(dx)) {
+        activePage = null;
+        return;
+      }
+      dragging = true;
+      activePage.classList.add('swiping');
+    }
+
+    if (!dragging) return;
+    // Only allow rightward swipe
+    const clampedX = Math.max(0, dx);
+    activePage.style.transform = "translateX(" + clampedX + "px)";
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    if (!activePage || !dragging) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStartX;
+
+    activePage.classList.remove('swiping');
+
+    if (dx > COMPLETE_THRESHOLD) {
+      // Complete the swipe — animate off screen then go back
+      activePage.style.transition = 'transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      activePage.style.transform = "translateX(100%)";
+      setTimeout(() => {
+        activePage.style.transform = '';
+        activePage.style.transition = '';
+        goBack();
+      }, 220);
+    } else {
+      // Snap back
+      activePage.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      activePage.style.transform = '';
+      setTimeout(() => { activePage.style.transition = ''; }, 250);
+    }
+
+    activePage = null;
+    dragging = false;
+    axisLocked = false;
+  }, { passive: true });
+})();
 
 // ========== INIT ==========
 (async () => {
