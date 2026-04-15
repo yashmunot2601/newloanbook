@@ -139,13 +139,6 @@
   /* PAGES */
   .page { display: none; }
   .page.active { display: block; }
-  #page-detail, #page-idetail {
-    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    will-change: transform;
-  }
-  #page-detail.swiping, #page-idetail.swiping {
-    transition: none;
-  }
 
   /* DASHBOARD */
   .greeting { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
@@ -323,6 +316,48 @@
   .mini-card-amount { font-size: 16px; font-weight: 700; margin-top: 4px; }
   .mini-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+  /* INVESTMENTS */
+  .inv-section { margin-bottom: 20px; }
+  .inv-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: var(--surface2); border-radius: 12px 12px 0 0;
+    border: 1px solid var(--border); border-bottom: none; cursor: pointer;
+  }
+  .inv-section-header:only-child, .inv-section-header.collapsed { border-radius: 12px; border-bottom: 1px solid var(--border); }
+  .inv-section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; }
+  .inv-section-total { font-size: 15px; font-weight: 700; color: var(--accent); }
+  .inv-section-chevron { color: var(--muted); font-size: 13px; transition: transform 0.2s; }
+  .inv-section-chevron.open { transform: rotate(180deg); }
+  .inv-items { border: 1px solid var(--border); border-radius: 0 0 12px 12px; overflow: hidden; }
+  .inv-item {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    background: var(--surface); transition: background 0.15s;
+  }
+  .inv-item:last-child { border-bottom: none; }
+  .inv-item:active { background: var(--surface2); }
+  .inv-item-left { flex: 1; min-width: 0; }
+  .inv-item-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .inv-item-meta { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .inv-item-right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+  .inv-item-value { font-size: 15px; font-weight: 700; color: var(--text); }
+  .inv-item-gain { font-size: 11px; margin-top: 2px; font-weight: 500; }
+  .inv-item-gain.pos { color: var(--accent2); }
+  .inv-item-gain.neg { color: var(--danger); }
+  .inv-total-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px; margin-bottom: 20px;
+  }
+  .inv-total-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .inv-total-value { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .inv-total-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .inv-add-btn { background: var(--surface2); border: 1px dashed var(--border); border-radius: 10px; padding: 12px; text-align: center; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+
+  /* INVESTMENT MODAL */
+  .inv-modal-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .inv-modal-tab { flex: 1; padding: 8px; text-align: center; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); color: var(--muted); background: var(--surface2); }
+  .inv-modal-tab.active { background: var(--accent); color: #1a1000; border-color: var(--accent); }
+
   /* MONTH GRID (detail view) */
   .month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .month-cell {
@@ -384,7 +419,7 @@
     </div>
     <div class="field">
       <label>PIN (4 digits)</label>
-      <input type="password" inputmode="numeric" maxlength="4" id="login-pin" placeholder="••••"/>
+      <input type="password" inputmode="numeric" maxlength="4" id="login-pin" placeholder="••••" oninput="onPinInput(this)"/>
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
     <div id="login-error" class="error-msg"></div>
@@ -534,6 +569,17 @@
       </div>
     </div>
 
+    <!-- INVESTMENTS PAGE -->
+    <div class="page" id="page-investments">
+      <div class="section-header" style="margin-top:0">
+        <span class="section-title">My Wealth</span>
+        <span class="section-action" onclick="openAddInvModal()">+ Add</span>
+      </div>
+      <div id="inv-total-card-wrap"></div>
+      <div id="inv-sections-wrap"></div>
+      <div style="height:20px"></div>
+    </div>
+
     <!-- SETTINGS PAGE -->
     <div class="page" id="page-settings">
       <div class="section-header" style="margin-top:0">
@@ -607,6 +653,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <span>Interest</span>
     </div>
+    <div class="nav-item" id="nav-investments" onclick="navTo('investments')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      <span>Wealth</span>
+    </div>
     <div class="nav-item" id="nav-settings" onclick="navTo('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       <span>Settings</span>
@@ -615,6 +665,38 @@
 
   <!-- FAB -->
   <button class="fab" id="fab-btn" onclick="openFab()">+</button>
+</div>
+
+<!-- ADD/EDIT INVESTMENT MODAL -->
+<div class="modal-overlay" id="modal-inv">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="inv-modal-title">Add Investment</h3>
+    <input type="hidden" id="inv-edit-id"/>
+    <input type="hidden" id="inv-edit-item-id"/>
+    <div class="inv-modal-tabs">
+      <div class="inv-modal-tab active" id="invtab-section" onclick="setInvModalTab('section')">New Category</div>
+      <div class="inv-modal-tab" id="invtab-item" onclick="setInvModalTab('item')">Add Item</div>
+    </div>
+    <!-- Section fields -->
+    <div id="inv-section-fields">
+      <div class="field"><label>Category Name</label><input type="text" id="inv-sec-name" placeholder="e.g. Shares, Mutual Funds, PPF"/></div>
+    </div>
+    <!-- Item fields -->
+    <div id="inv-item-fields" style="display:none">
+      <div class="field">
+        <label>Category</label>
+        <select id="inv-item-section"></select>
+      </div>
+      <div class="field"><label>Name</label><input type="text" id="inv-item-name" placeholder="e.g. Yash Shares, Jio Blackrock"/></div>
+      <div class="field"><label>Current Value (₹)</label><input type="text" inputmode="numeric" id="inv-item-value" placeholder="e.g. 1,98,105" oninput="formatAmountInput(this)"/></div>
+      <div class="field"><label>Invested Amount (₹) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" inputmode="numeric" id="inv-item-invested" placeholder="e.g. 2,99,416" oninput="formatAmountInput(this)"/></div>
+      <div class="field"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="inv-item-notes" placeholder="e.g. 8741 cash, 75gm given to Iba"/></div>
+      <div class="field"><label>As of Date</label><input type="date" id="inv-item-date"/></div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveInvModal()">Save</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-inv')">Cancel</button>
+  </div>
 </div>
 
 <!-- ADD BORROWER MODAL -->
@@ -873,6 +955,9 @@ function switchToLogin() {
   document.getElementById('register-card').style.display = 'none';
   document.getElementById('login-card').style.display = 'block';
 }
+function onPinInput(el) {
+  if (el.value.length === 4) doLogin();
+}
 async function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pin = document.getElementById('login-pin').value;
@@ -960,6 +1045,7 @@ function navTo(page) {
   if (page === 'borrowers') renderBorrowers();
   if (page === 'interest') renderInterestPage();
   if (page === 'settings') renderSettings();
+  if (page === 'investments') renderInvestments();
   document.querySelector('.scroll-area').scrollTop = 0;
 }
 function goBack() { navTo(currentPage === 'detail' ? 'borrowers' : 'home'); }
@@ -2101,91 +2187,212 @@ function showToast(msg) {
   t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
 }
 
-// ========== SWIPE BACK GESTURE ==========
-(function() {
-  const SWIPE_PAGES = ['page-detail', 'page-idetail'];
-  const EDGE_THRESHOLD = 40;   // px from left edge to start gesture
-  const COMPLETE_THRESHOLD = 100; // px drag to trigger back
+// ========== INVESTMENTS ==========
+function getInvData() {
+  try { return JSON.parse(localStorage.getItem('lb_investments') || 'null') || { sections: [], items: [] }; } catch { return { sections: [], items: [] }; }
+}
+function saveInvData(data) { localStorage.setItem('lb_investments', JSON.stringify(data)); }
 
-  let touchStartX = 0, touchStartY = 0;
-  let activePage = null;
-  let dragging = false;
-  let axisLocked = false; // true = horizontal swipe, false = could be scroll
+function initInvData() {
+  const existing = getInvData();
+  if (existing.sections.length > 0) return;
+  const data = {
+    sections: [
+      { id: 'sec-shares', name: 'Shares', order: 0 },
+      { id: 'sec-ppf', name: 'PPF', order: 1 },
+      { id: 'sec-mf', name: 'Mutual Funds', order: 2 },
+      { id: 'sec-silver', name: 'Silver', order: 3 }
+    ],
+    items: [
+      { id: 'itm-yash', sectionId: 'sec-shares', name: 'Yash Shares', value: 198105, invested: 299416, notes: '8,741 cash · +51.14% returns', date: '2026-02-05' },
+      { id: 'itm-srushti', sectionId: 'sec-shares', name: 'Srushti Shares', value: 332959, invested: 457782, notes: '+37.49% returns', date: '2026-02-05' },
+      { id: 'itm-nse', sectionId: 'sec-shares', name: 'NSE Shares', value: 100000, invested: 100000, notes: '', date: '' },
+      { id: 'itm-mse', sectionId: 'sec-shares', name: 'MSE Shares', value: 100000, invested: 100000, notes: '', date: '' },
+      { id: 'itm-ppf', sectionId: 'sec-ppf', name: 'PPF', value: 780965, invested: 0, notes: 'Mar 2026', date: '2026-03-31' },
+      { id: 'itm-mfmain', sectionId: 'sec-mf', name: 'Mutual Funds Portfolio', value: 792403, invested: 816328, notes: '+4.2% returns', date: '' },
+      { id: 'itm-jio', sectionId: 'sec-mf', name: 'Jio Blackrock', value: 15000, invested: 15000, notes: '', date: '' },
+      { id: 'itm-us', sectionId: 'sec-mf', name: 'US Stocks (Copper)', value: 10000, invested: 10000, notes: '', date: '' },
+      { id: 'itm-silver', sectionId: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2025-08-23' }
+    ]
+  };
+  saveInvData(data);
+}
 
-  document.addEventListener('touchstart', e => {
-    const touch = e.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-    dragging = false;
-    axisLocked = false;
-    activePage = null;
+function fmtInv(n) {
+  if (n === 0) return '₹0';
+  if (!n) return '';
+  return '\u20B9' + Number(n).toLocaleString('en-IN');
+}
 
-    // Only start if touch begins within edge threshold
-    if (touchStartX > EDGE_THRESHOLD) return;
+function renderInvestments() {
+  initInvData();
+  const data = getInvData();
+  const sections = [...data.sections].sort((a,b) => (a.order||0)-(b.order||0));
+  let grandTotal = 0, grandInvested = 0;
+  data.items.forEach(it => { grandTotal += it.value||0; grandInvested += it.invested||0; });
+  const grandGain = grandTotal - grandInvested;
+  const grandPct = grandInvested > 0 ? ((grandGain/grandInvested)*100).toFixed(1) : null;
 
-    // Find which swipe page is currently active
-    for (const pid of SWIPE_PAGES) {
-      const el = document.getElementById(pid);
-      if (el && el.classList.contains('active')) {
-        activePage = el;
-        break;
-      }
-    }
-  }, { passive: true });
+  document.getElementById('inv-total-card-wrap').innerHTML =
+    '<div class="inv-total-card">' +
+    '<div class="inv-total-label">Total Portfolio Value</div>' +
+    '<div class="inv-total-value">' + fmtInv(grandTotal) + '</div>' +
+    (grandInvested > 0 ? '<div class="inv-total-sub">Invested: ' + fmtInv(grandInvested) +
+      ' &nbsp;&middot;&nbsp; <span style="color:' + (grandGain>=0?'var(--accent2)':'var(--danger)') + '">' +
+      (grandGain>=0?'+':'') + fmtInv(grandGain) + (grandPct?' ('+grandPct+'%)':'') + '</span></div>' : '') +
+    '</div>';
 
-  document.addEventListener('touchmove', e => {
-    if (!activePage) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - touchStartX;
-    const dy = touch.clientY - touchStartY;
+  let html = '';
+  sections.forEach(function(sec) {
+    const items = data.items.filter(function(it){ return it.sectionId === sec.id; });
+    const secTotal = items.reduce(function(s,it){ return s+(it.value||0); }, 0);
+    let itemsHtml = items.map(function(it) {
+      const gain = (it.value||0) - (it.invested||0);
+      const pct = it.invested > 0 ? ((gain/it.invested)*100).toFixed(1) : null;
+      return '<div class="inv-item">' +
+        '<div class="inv-item-left">' +
+        '<div class="inv-item-name">' + it.name + '</div>' +
+        (it.notes ? '<div class="inv-item-meta">' + it.notes + '</div>' : '') +
+        (it.date ? '<div class="inv-item-meta" style="opacity:0.5">As of ' + it.date + '</div>' : '') +
+        '</div>' +
+        '<div class="inv-item-right">' +
+        '<div class="inv-item-value">' + fmtInv(it.value) + '</div>' +
+        (it.invested > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Cost: ' + fmtInv(it.invested) + '</div>' : '') +
+        (pct ? '<div class="inv-item-gain ' + (gain>=0?'pos':'neg') + '">' + (gain>=0?'+':'') + fmtInv(gain) + ' (' + pct + '%)</div>' : '') +
+        '<div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">' +
+        '<span onclick="openEditInvItem('' + it.id + '')" style="color:var(--muted);cursor:pointer;font-size:13px">&#9998;</span>' +
+        '<span onclick="deleteInvItem('' + it.id + '')" style="color:var(--danger);cursor:pointer;font-size:13px">&#128465;</span>' +
+        '</div></div></div>';
+    }).join('');
+    itemsHtml += '<div class="inv-add-btn" onclick="openAddInvItem('' + sec.id + '')">+ Add item</div>';
 
-    // Lock axis on first significant move
-    if (!axisLocked) {
-      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-      axisLocked = true;
-      // If mostly vertical, abandon gesture
-      if (Math.abs(dy) > Math.abs(dx)) {
-        activePage = null;
-        return;
-      }
-      dragging = true;
-      activePage.classList.add('swiping');
-    }
+    html += '<div class="inv-section">' +
+      '<div class="inv-section-header" onclick="toggleInvSection('' + sec.id + '')">' +
+      '<div><div class="inv-section-title">' + sec.name + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + items.length + ' item' + (items.length!==1?'s':'') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div class="inv-section-total">' + fmtInv(secTotal) + '</div>' +
+      '<div class="inv-section-chevron open" id="chev-' + sec.id + '">&#9660;</div>' +
+      '<span onclick="event.stopPropagation();deleteInvSection('' + sec.id + '')" style="color:var(--danger);font-size:14px;cursor:pointer;padding:2px 4px">&#215;</span>' +
+      '</div></div>' +
+      '<div class="inv-items" id="invitems-' + sec.id + '">' + itemsHtml + '</div>' +
+      '</div>';
+  });
+  document.getElementById('inv-sections-wrap').innerHTML = html;
+}
 
-    if (!dragging) return;
-    // Only allow rightward swipe
-    const clampedX = Math.max(0, dx);
-    activePage.style.transform = "translateX(" + clampedX + "px)";
-  }, { passive: true });
+function toggleInvSection(secId) {
+  const items = document.getElementById('invitems-' + secId);
+  const chev = document.getElementById('chev-' + secId);
+  if (!items) return;
+  if (items.style.display === 'none') {
+    items.style.display = '';
+    chev.classList.add('open');
+  } else {
+    items.style.display = 'none';
+    chev.classList.remove('open');
+  }
+}
 
-  document.addEventListener('touchend', e => {
-    if (!activePage || !dragging) return;
-    const touch = e.changedTouches[0];
-    const dx = touch.clientX - touchStartX;
+let invModalTab = 'section';
+function setInvModalTab(tab) {
+  invModalTab = tab;
+  document.getElementById('inv-section-fields').style.display = tab==='section' ? '' : 'none';
+  document.getElementById('inv-item-fields').style.display = tab==='item' ? '' : 'none';
+  document.getElementById('invtab-section').classList.toggle('active', tab==='section');
+  document.getElementById('invtab-item').classList.toggle('active', tab==='item');
+}
 
-    activePage.classList.remove('swiping');
+function populateSectionSelect(selectedId) {
+  const data = getInvData();
+  const sel = document.getElementById('inv-item-section');
+  sel.innerHTML = data.sections.map(function(s){ return '<option value="' + s.id + '"' + (s.id===selectedId?' selected':'') + '>' + s.name + '</option>'; }).join('');
+}
 
-    if (dx > COMPLETE_THRESHOLD) {
-      // Complete the swipe — animate off screen then go back
-      activePage.style.transition = 'transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      activePage.style.transform = "translateX(100%)";
-      setTimeout(() => {
-        activePage.style.transform = '';
-        activePage.style.transition = '';
-        goBack();
-      }, 220);
-    } else {
-      // Snap back
-      activePage.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      activePage.style.transform = '';
-      setTimeout(() => { activePage.style.transition = ''; }, 250);
-    }
+function openAddInvModal() {
+  document.getElementById('inv-modal-title').textContent = 'Add Investment';
+  document.getElementById('inv-edit-item-id').value = '';
+  document.getElementById('inv-sec-name').value = '';
+  document.getElementById('inv-item-name').value = '';
+  document.getElementById('inv-item-value').value = '';
+  document.getElementById('inv-item-invested').value = '';
+  document.getElementById('inv-item-notes').value = '';
+  document.getElementById('inv-item-date').value = new Date().toISOString().split('T')[0];
+  populateSectionSelect('');
+  setInvModalTab('section');
+  document.getElementById('modal-inv').classList.add('open');
+}
 
-    activePage = null;
-    dragging = false;
-    axisLocked = false;
-  }, { passive: true });
-})();
+function openAddInvItem(sectionId) {
+  openAddInvModal();
+  setInvModalTab('item');
+  populateSectionSelect(sectionId);
+}
+
+function openEditInvItem(itemId) {
+  const data = getInvData();
+  const item = data.items.find(function(it){ return it.id===itemId; });
+  if (!item) return;
+  document.getElementById('inv-modal-title').textContent = 'Edit Item';
+  document.getElementById('inv-edit-item-id').value = itemId;
+  populateSectionSelect(item.sectionId);
+  document.getElementById('inv-item-name').value = item.name;
+  document.getElementById('inv-item-value').value = item.value || '';
+  document.getElementById('inv-item-invested').value = item.invested || '';
+  document.getElementById('inv-item-notes').value = item.notes || '';
+  document.getElementById('inv-item-date').value = item.date || '';
+  setInvModalTab('item');
+  document.getElementById('modal-inv').classList.add('open');
+}
+
+function saveInvModal() {
+  const data = getInvData();
+  const editItemId = document.getElementById('inv-edit-item-id').value;
+  if (invModalTab === 'section') {
+    const name = document.getElementById('inv-sec-name').value.trim();
+    if (!name) { showToast('Please enter a category name'); return; }
+    data.sections.push({ id: 'sec-' + Date.now(), name: name, order: data.sections.length });
+    saveInvData(data);
+    closeModal('modal-inv');
+    renderInvestments();
+    return;
+  }
+  const sectionId = document.getElementById('inv-item-section').value;
+  const name = document.getElementById('inv-item-name').value.trim();
+  const value = parseFloat((document.getElementById('inv-item-value').value||'0').replace(/,/g,'')) || 0;
+  const invested = parseFloat((document.getElementById('inv-item-invested').value||'0').replace(/,/g,'')) || 0;
+  const notes = document.getElementById('inv-item-notes').value.trim();
+  const date = document.getElementById('inv-item-date').value;
+  if (!name) { showToast('Please enter item name'); return; }
+  if (editItemId) {
+    const idx = data.items.findIndex(function(it){ return it.id===editItemId; });
+    if (idx !== -1) data.items[idx] = Object.assign({}, data.items[idx], { sectionId: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
+  } else {
+    data.items.push({ id: 'itm-' + Date.now(), sectionId: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
+  }
+  saveInvData(data);
+  closeModal('modal-inv');
+  renderInvestments();
+}
+
+function deleteInvItem(itemId) {
+  if (!confirm('Delete this item?')) return;
+  const data = getInvData();
+  data.items = data.items.filter(function(it){ return it.id !== itemId; });
+  saveInvData(data);
+  renderInvestments();
+}
+
+function deleteInvSection(secId) {
+  const data = getInvData();
+  const count = data.items.filter(function(it){ return it.sectionId===secId; }).length;
+  if (count > 0 && !confirm('Delete this category and all ' + count + ' item(s) in it?')) return;
+  data.sections = data.sections.filter(function(s){ return s.id !== secId; });
+  data.items = data.items.filter(function(it){ return it.sectionId !== secId; });
+  saveInvData(data);
+  renderInvestments();
+}
+
 
 // ========== INIT ==========
 (async () => {
