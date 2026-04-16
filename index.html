@@ -2260,20 +2260,20 @@ function renderInvestments() {
         (it.invested > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Cost: ' + fmtInv(it.invested) + '</div>' : '') +
         (pct ? '<div class="inv-item-gain ' + (gain>=0?'pos':'neg') + '">' + (gain>=0?'+':'') + fmtInv(gain) + ' (' + pct + '%)</div>' : '') +
         '<div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">' +
-        '<span onclick="openEditInvItem('' + it.id + '')" style="color:var(--muted);cursor:pointer;font-size:13px">&#9998;</span>' +
-        '<span onclick="deleteInvItem('' + it.id + '')" style="color:var(--danger);cursor:pointer;font-size:13px">&#128465;</span>' +
+        '<span onclick="openEditInvItem(\'' + it.id + '\')" style="color:var(--muted);cursor:pointer;font-size:13px">&#9998;</span>' +
+        '<span onclick="deleteInvItem(\'' + it.id + '\')" style="color:var(--danger);cursor:pointer;font-size:13px">&#128465;</span>' +
         '</div></div></div>';
     }).join('');
-    itemsHtml += '<div class="inv-add-btn" onclick="openAddInvItem('' + sec.id + '')">+ Add item</div>';
+    itemsHtml += '<div class="inv-add-btn" onclick="openAddInvItem(\'' + sec.id + '\')">+ Add item</div>';
 
     html += '<div class="inv-section">' +
-      '<div class="inv-section-header" onclick="toggleInvSection('' + sec.id + '')">' +
+      '<div class="inv-section-header" onclick="toggleInvSection(\'" + sec.id + "\')">' +
       '<div><div class="inv-section-title">' + sec.name + '</div>' +
       '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + items.length + ' item' + (items.length!==1?'s':'') + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<div class="inv-section-total">' + fmtInv(secTotal) + '</div>' +
       '<div class="inv-section-chevron open" id="chev-' + sec.id + '">&#9660;</div>' +
-      '<span onclick="event.stopPropagation();deleteInvSection('' + sec.id + '')" style="color:var(--danger);font-size:14px;cursor:pointer;padding:2px 4px">&#215;</span>' +
+      '<span onclick="event.stopPropagation();deleteInvSection(\'' + sec.id + '\')" style="color:var(--danger);font-size:14px;cursor:pointer;padding:2px 4px">&#215;</span>' +
       '</div></div>' +
       '<div class="inv-items" id="invitems-' + sec.id + '">' + itemsHtml + '</div>' +
       '</div>';
