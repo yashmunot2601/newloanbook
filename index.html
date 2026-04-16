@@ -573,9 +573,10 @@
     <!-- INVESTMENTS PAGE -->
     <div class="page" id="page-investments">
       <div class="section-header" style="margin-top:0">
-        <span class="section-title">My Wealth</span>
-        <span class="section-action" onclick="openAddInvModal()">+ Add</span>
+        <span class="section-title">Wealth</span>
+        <span class="section-action" onclick="openAddInvModal()" id="inv-add-btn-header">+ Add</span>
       </div>
+      <div class="filter-tabs" id="inv-filter-tabs" style="display:none"></div>
       <div id="inv-total-card-wrap"></div>
       <div id="inv-sections-wrap"></div>
       <div style="height:20px"></div>
@@ -919,6 +920,7 @@ let currentPage = 'home';
 let selectedColor = '#e8b86d';
 let payType = 'repay';
 let viewFilter = 'all'; // 'all', 'mine', or a specific user id
+let invViewFilter = 'mine'; // wealth tab filter — default to 'mine'
 
 async function loadAllData() {
   try {
@@ -1020,6 +1022,7 @@ function enterApp() {
     document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
   }
   viewFilter = 'mine';
+  invViewFilter = 'mine';
   document.getElementById('fab-btn').style.display = 'flex';
   // Always go to home page on login regardless of previous page
   navTo('home');
@@ -2197,13 +2200,13 @@ function showToast(msg) {
 // ========== INVESTMENTS ==========
 function invKey() { return 'lb_investments_' + (currentUser ? currentUser.id : 'default'); }
 function getInvData() {
-  try { return JSON.parse(localStorage.getItem(invKey()) || 'null') || { sections: [], items: [] }; } catch { return { sections: [], items: [] }; }
+  try { return JSON.parse(localStorage.getItem(invKey()) || 'null') || { initialized: false, sections: [], items: [] }; } catch { return { initialized: false, sections: [], items: [] }; }
 }
-function saveInvData(data) { localStorage.setItem(invKey(), JSON.stringify(data)); }
+function saveInvData(data) { data.initialized = true; localStorage.setItem(invKey(), JSON.stringify(data)); }
 
 function initInvData() {
   const existing = getInvData();
-  if (existing.sections.length > 0) return;
+  if (existing.initialized) return; // already set up for this user (even if empty)
   const data = {
     sections: [
       { id: 'sec-shares', name: 'Shares', order: 0 },
@@ -2223,6 +2226,7 @@ function initInvData() {
       { id: 'itm-silver', sectionId: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2025-08-23' }
     ]
   };
+  data.initialized = true;
   saveInvData(data);
 }
 
@@ -2239,15 +2243,78 @@ function getMyTotalLent() {
   return myBorrowers.reduce(function(sum, b) { return sum + Math.max(0, getBalance(b.id)); }, 0);
 }
 
+function renderInvFilterTabs() {
+  const el = document.getElementById('inv-filter-tabs');
+  if (!el) return;
+  // Viewers can never switch — hide tabs
+  if (!isOwner()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const otherUsers = DB.users.filter(function(u){ return u.id !== currentUser.id; });
+  if (otherUsers.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  const tabs = [{ id: 'mine', label: 'My Data' }, { id: 'all', label: 'All' }];
+  otherUsers.forEach(function(u){ tabs.push({ id: u.id, label: u.name + "'s" }); });
+  el.innerHTML = tabs.map(function(t){
+    return '<div class="filter-tab' + (invViewFilter===t.id?' active':'') + '" data-inv-filter="' + t.id + '">' + t.label + '</div>';
+  }).join('');
+  el.onclick = function(e) {
+    const tab = e.target.closest('[data-inv-filter]');
+    if (!tab) return;
+    invViewFilter = tab.dataset.invFilter;
+    renderInvestments();
+  };
+}
+
+function getInvTargetUserId() {
+  if (invViewFilter === 'mine') return currentUser ? currentUser.id : null;
+  if (invViewFilter === 'all') return null; // means show all
+  return invViewFilter; // specific user id
+}
+
+function getTotalLentForUser(userId) {
+  // userId = null means all owners
+  const borrowers = userId
+    ? DB.borrowers.filter(function(b){ return b.owner_id === userId; })
+    : DB.borrowers;
+  return borrowers.reduce(function(sum, b){ return sum + Math.max(0, getBalance(b.id)); }, 0);
+}
+
 function renderInvestments() {
-  initInvData();
-  const data = getInvData();
+  // Determine whose data to show
+  const targetUserId = getInvTargetUserId(); // null = all
+  const isMine = invViewFilter === 'mine' || (currentUser && invViewFilter === currentUser.id);
+  const canEdit = isMine && isOwner(); // only edit your own data
+
+  // For non-mine views, load that user's stored inv data
+  let data;
+  if (targetUserId && targetUserId !== (currentUser && currentUser.id)) {
+    // Viewing someone else — read their key (read-only)
+    const theirKey = 'lb_investments_' + targetUserId;
+    try { data = JSON.parse(localStorage.getItem(theirKey) || 'null') || { initialized: true, sections: [], items: [] }; }
+    catch { data = { initialized: true, sections: [], items: [] }; }
+  } else if (!targetUserId) {
+    // "All" — just show current user's own for now (investments aren't aggregated across users)
+    initInvData();
+    data = getInvData();
+  } else {
+    initInvData();
+    data = getInvData();
+  }
+
   const sections = data.sections.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
 
-  // Grand total including loans
+  // Render filter tabs
+  renderInvFilterTabs();
+
+  // Show/hide "+ Add" button based on whether viewing own data
+  const addBtn = document.getElementById('inv-add-btn-header');
+  if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
+
+  // Loan total for the viewed user
+  const loanTotal = getTotalLentForUser(targetUserId);
+
+  // Grand totals from investment items
   let invTotal = 0, invInvested = 0;
   data.items.forEach(function(it) { invTotal += it.value||0; invInvested += it.invested||0; });
-  const loanTotal = getMyTotalLent();
   const grandTotal = invTotal + loanTotal;
   const grandGain = invTotal - invInvested;
   const grandPct = invInvested > 0 ? ((grandGain/invInvested)*100).toFixed(1) : null;
@@ -2262,10 +2329,9 @@ function renderInvestments() {
       (loanTotal > 0 ? ' &nbsp;&middot;&nbsp; Loans: ' + fmtInv(loanTotal) : '') + '</div>' : '') +
     '</div>';
 
-  // Build sections HTML — use data-* attributes, NO inline onclick with IDs
   let html = '';
 
-  // Loans section (auto, read-only) - Change 3
+  // Loans section (auto, collapsed by default) — Fix 1
   if (loanTotal > 0) {
     html += '<div class="inv-section">' +
       '<div class="inv-section-header" data-toggle="loans-auto">' +
@@ -2273,9 +2339,9 @@ function renderInvestments() {
       '<div style="font-size:11px;color:var(--muted);margin-top:1px">Auto from Loans tab</div></div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<div class="inv-section-total">' + fmtInv(loanTotal) + '</div>' +
-      '<div class="inv-section-chevron open" id="chev-loans-auto">&#9660;</div>' +
+      '<div class="inv-section-chevron" id="chev-loans-auto">&#9660;</div>' +
       '</div></div>' +
-      '<div class="inv-items" id="invitems-loans-auto">' +
+      '<div class="inv-items" id="invitems-loans-auto" style="display:none">' +
       '<div class="inv-item"><div class="inv-item-left"><div class="inv-item-name">Outstanding Loans</div>' +
       '<div class="inv-item-meta">Updates automatically from Loans tab</div></div>' +
       '<div class="inv-item-right"><div class="inv-item-value">' + fmtInv(loanTotal) + '</div></div></div>' +
@@ -2289,6 +2355,12 @@ function renderInvestments() {
     let itemsHtml = items.map(function(it) {
       const gain = (it.value||0) - (it.invested||0);
       const pct = it.invested > 0 ? ((gain/it.invested)*100).toFixed(1) : null;
+      const editBtns = canEdit
+        ? '<div style="display:flex;gap:12px;margin-top:8px;justify-content:flex-end;align-items:center">' +
+          '<span class="inv-action-btn" data-edit-item="' + it.id + '" title="Edit" style="font-size:18px;cursor:pointer;color:var(--muted)">&#9998;</span>' +
+          '<span class="inv-action-btn" data-del-item="' + it.id + '" title="Delete" style="font-size:18px;cursor:pointer;color:var(--danger)">&#128465;</span>' +
+          '</div>'
+        : '';
       return '<div class="inv-item">' +
         '<div class="inv-item-left">' +
         '<div class="inv-item-name">' + it.name + '</div>' +
@@ -2299,42 +2371,43 @@ function renderInvestments() {
         '<div class="inv-item-value">' + fmtInv(it.value) + '</div>' +
         (it.invested > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Cost: ' + fmtInv(it.invested) + '</div>' : '') +
         (pct ? '<div class="inv-item-gain ' + (gain>=0?'pos':'neg') + '">' + (gain>=0?'+':'') + fmtInv(gain) + ' (' + pct + '%)</div>' : '') +
-        '<div style="display:flex;gap:12px;margin-top:8px;justify-content:flex-end;align-items:center">' +
-        '<span class="inv-action-btn" data-edit-item="' + it.id + '" title="Edit" style="font-size:18px;cursor:pointer;color:var(--muted)">&#9998;</span>' +
-        '<span class="inv-action-btn" data-del-item="' + it.id + '" title="Delete" style="font-size:18px;cursor:pointer;color:var(--danger)">&#128465;</span>' +
-        '</div></div></div>';
+        editBtns +
+        '</div></div>';
     }).join('');
 
-    itemsHtml += '<div class="inv-add-btn" data-add-item="' + sec.id + '">+ Add item to ' + sec.name + '</div>';
+    // "Add item" button only for own data
+    if (canEdit) {
+      itemsHtml += '<div class="inv-add-btn" data-add-item="' + sec.id + '">+ Add item to ' + sec.name + '</div>';
+    }
 
+    const editSecBtns = canEdit
+      ? '<span class="inv-action-btn" data-edit-sec="' + sec.id + '" title="Rename" style="font-size:15px;cursor:pointer;color:var(--muted);padding:2px 4px">&#9998;</span>' +
+        '<span class="inv-action-btn" data-del-sec="' + sec.id + '" title="Delete" style="font-size:15px;cursor:pointer;color:var(--danger);padding:2px 4px">&#215;</span>'
+      : '';
+
+    // All sections collapsed by default (Fix 1)
     html += '<div class="inv-section">' +
       '<div class="inv-section-header" data-toggle="' + sec.id + '">' +
       '<div>' +
-      '<div class="inv-section-title" id="sectitle-' + sec.id + '">' + sec.name + '</div>' +
+      '<div class="inv-section-title">' + sec.name + '</div>' +
       '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + items.length + ' item' + (items.length!==1?'s':'') + '</div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<div class="inv-section-total">' + fmtInv(secTotal) + '</div>' +
-      '<div class="inv-section-chevron open" id="chev-' + sec.id + '">&#9660;</div>' +
-      '<span class="inv-action-btn" data-edit-sec="' + sec.id + '" title="Rename" style="font-size:15px;cursor:pointer;color:var(--muted);padding:2px 4px">&#9998;</span>' +
-      '<span class="inv-action-btn" data-del-sec="' + sec.id + '" title="Delete" style="font-size:15px;cursor:pointer;color:var(--danger);padding:2px 4px">&#215;</span>' +
+      '<div class="inv-section-chevron" id="chev-' + sec.id + '">&#9660;</div>' +
+      editSecBtns +
       '</div></div>' +
-      '<div class="inv-items" id="invitems-' + sec.id + '">' + itemsHtml + '</div>' +
+      '<div class="inv-items" id="invitems-' + sec.id + '" style="display:none">' + itemsHtml + '</div>' +
       '</div>';
   });
 
   document.getElementById('inv-sections-wrap').innerHTML = html;
 
-  // Attach all event listeners via delegation on the wrap
+  // Event delegation — only fires for own data actions
   document.getElementById('inv-sections-wrap').onclick = function(e) {
     const btn = e.target.closest('[data-toggle],[data-edit-item],[data-del-item],[data-add-item],[data-del-sec],[data-edit-sec]');
     if (!btn) return;
-
-    if (btn.dataset.toggle) {
-      e.stopPropagation();
-      toggleInvSection(btn.dataset.toggle);
-      return;
-    }
+    if (btn.dataset.toggle) { e.stopPropagation(); toggleInvSection(btn.dataset.toggle); return; }
     e.stopPropagation();
     if (btn.dataset.editItem) { openEditInvItem(btn.dataset.editItem); return; }
     if (btn.dataset.delItem) { deleteInvItem(btn.dataset.delItem); return; }
