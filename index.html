@@ -2198,13 +2198,27 @@ function showToast(msg) {
 }
 
 // ========== INVESTMENTS ==========
-function invKey() { return 'lb_investments_' + (currentUser ? currentUser.id : 'default'); }
-function getInvData() {
-  try { return JSON.parse(localStorage.getItem(invKey()) || 'null') || { initialized: false, sections: [], items: [] }; } catch { return { initialized: false, sections: [], items: [] }; }
+function invKey(userId) { return 'lb_investments_' + (userId || (currentUser ? currentUser.id : 'default')); }
+
+function migrateInvData() {
+  // One-time migration: move old flat 'lb_investments' key to per-user key
+  if (!currentUser) return;
+  const newKey = invKey();
+  if (localStorage.getItem(newKey)) return; // already migrated
+  const old = localStorage.getItem('lb_investments');
+  if (old) {
+    localStorage.setItem(newKey, old);
+    // Don't delete old key — keeps it as backup
+  }
 }
-function saveInvData(data) { data.initialized = true; localStorage.setItem(invKey(), JSON.stringify(data)); }
+
+function getInvData(userId) {
+  try { return JSON.parse(localStorage.getItem(invKey(userId)) || 'null') || { initialized: false, sections: [], items: [] }; } catch { return { initialized: false, sections: [], items: [] }; }
+}
+function saveInvData(data, userId) { data.initialized = true; localStorage.setItem(invKey(userId), JSON.stringify(data)); }
 
 function initInvData() {
+  migrateInvData(); // migrate old flat key if needed
   const existing = getInvData();
   if (existing.initialized) return; // already set up for this user (even if empty)
   const data = {
@@ -2226,8 +2240,7 @@ function initInvData() {
       { id: 'itm-silver', sectionId: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2025-08-23' }
     ]
   };
-  data.initialized = true;
-  saveInvData(data);
+  saveInvData(data); // saveInvData sets initialized=true automatically
 }
 
 function fmtInv(n) {
@@ -2280,32 +2293,27 @@ function getTotalLentForUser(userId) {
 
 function renderInvestments() {
   // Determine whose data to show
-  const targetUserId = getInvTargetUserId(); // null = all
-  const isMine = invViewFilter === 'mine' || (currentUser && invViewFilter === currentUser.id);
-  const canEdit = isMine && isOwner(); // only edit your own data
+  const targetUserId = getInvTargetUserId(); // null means "all" = show own data
+  const viewingOwnData = !targetUserId || (currentUser && targetUserId === currentUser.id);
 
-  // For non-mine views, load that user's stored inv data
-  let data;
-  if (targetUserId && targetUserId !== (currentUser && currentUser.id)) {
-    // Viewing someone else — read their key (read-only)
-    const theirKey = 'lb_investments_' + targetUserId;
-    try { data = JSON.parse(localStorage.getItem(theirKey) || 'null') || { initialized: true, sections: [], items: [] }; }
-    catch { data = { initialized: true, sections: [], items: [] }; }
-  } else if (!targetUserId) {
-    // "All" — just show current user's own for now (investments aren't aggregated across users)
-    initInvData();
-    data = getInvData();
-  } else {
-    initInvData();
-    data = getInvData();
+  // canEdit: always true for own data; also true if you are an owner viewing someone else
+  // This means: Dad can edit his own entries. Yash can edit everyone's.
+  const canEdit = viewingOwnData || isOwner();
+
+  // Load the right data — use getInvData(userId) which reads the correct key
+  if (viewingOwnData) {
+    initInvData(); // seed own data if first time
   }
+  const data = getInvData(viewingOwnData ? null : targetUserId);
+  // targetUserId used as the "whose data to save" context for CRUD operations
+  window._invEditingUserId = viewingOwnData ? null : targetUserId;
 
   const sections = data.sections.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
 
   // Render filter tabs
   renderInvFilterTabs();
 
-  // Show/hide "+ Add" button based on whether viewing own data
+  // Show/hide "+ Add" button — always show when canEdit
   const addBtn = document.getElementById('inv-add-btn-header');
   if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
 
@@ -2432,13 +2440,13 @@ function toggleInvSection(secId) {
 
 // Change 4: Rename section
 function openRenameSec(secId) {
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   const sec = data.sections.find(function(s){ return s.id === secId; });
   if (!sec) return;
   const newName = prompt('Rename category:', sec.name);
   if (!newName || !newName.trim() || newName.trim() === sec.name) return;
   sec.name = newName.trim();
-  saveInvData(data);
+  saveInvData(data, window._invEditingUserId);
   renderInvestments();
 }
 
@@ -2452,7 +2460,7 @@ function setInvModalTab(tab) {
 }
 
 function populateSectionSelect(selectedId) {
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   const sel = document.getElementById('inv-item-section');
   sel.innerHTML = data.sections.map(function(s){
     return '<option value="' + s.id + '"' + (s.id===selectedId?' selected':'') + '>' + s.name + '</option>';
@@ -2480,7 +2488,7 @@ function openAddInvItem(sectionId) {
 }
 
 function openEditInvItem(itemId) {
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   const item = data.items.find(function(it){ return it.id===itemId; });
   if (!item) return;
   document.getElementById('inv-modal-title').textContent = 'Edit Item';
@@ -2496,13 +2504,13 @@ function openEditInvItem(itemId) {
 }
 
 function saveInvModal() {
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   const editItemId = document.getElementById('inv-edit-item-id').value;
   if (invModalTab === 'section') {
     const name = document.getElementById('inv-sec-name').value.trim();
     if (!name) { showToast('Please enter a category name'); return; }
     data.sections.push({ id: 'sec-' + Date.now(), name: name, order: data.sections.length });
-    saveInvData(data);
+    saveInvData(data, window._invEditingUserId);
     closeModal('modal-inv');
     renderInvestments();
     return;
@@ -2520,26 +2528,26 @@ function saveInvModal() {
   } else {
     data.items.push({ id: 'itm-' + Date.now(), sectionId: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
   }
-  saveInvData(data);
+  saveInvData(data, window._invEditingUserId);
   closeModal('modal-inv');
   renderInvestments();
 }
 
 function deleteInvItem(itemId) {
   if (!confirm('Delete this item?')) return;
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   data.items = data.items.filter(function(it){ return it.id !== itemId; });
-  saveInvData(data);
+  saveInvData(data, window._invEditingUserId);
   renderInvestments();
 }
 
 function deleteInvSection(secId) {
-  const data = getInvData();
+  const data = getInvData(window._invEditingUserId);
   const count = data.items.filter(function(it){ return it.sectionId===secId; }).length;
   if (count > 0 && !confirm('Delete this category and all ' + count + ' item(s) in it?')) return;
   data.sections = data.sections.filter(function(s){ return s.id !== secId; });
   data.items = data.items.filter(function(it){ return it.sectionId !== secId; });
-  saveInvData(data);
+  saveInvData(data, window._invEditingUserId);
   renderInvestments();
 }
 
