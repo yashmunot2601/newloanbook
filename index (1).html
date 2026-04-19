@@ -171,12 +171,12 @@
     cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
   }
   .borrower-card:active { transform: scale(0.98); }
-  .borrower-card.is-dragging { opacity: 0.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6); pointer-events: none; }
-  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; }
-  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; }
-  .drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
-  .drag-handle:hover { color: var(--accent); }
-  .drag-handle:active { cursor: grabbing; }
+  .borrower-card.is-dragging { opacity: 0.5; transform: scale(1.02); box-shadow: 0 16px 48px rgba(0,0,0,0.7); z-index: 100; border-color: var(--accent) !important; }
+  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; margin-top: 2px; }
+  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; margin-bottom: 2px; }
+  .drag-handle { width: 36px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 22px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
+  .drag-handle:hover { color: var(--muted); }
+  .drag-handle:active { cursor: grabbing; color: var(--accent); }
   .borrower-card-top { display: flex; align-items: center; gap: 12px; }
   .borrower-avatar {
     width: 42px; height: 42px; border-radius: 12px;
@@ -327,6 +327,7 @@
   .inv-section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; }
   .inv-section-total { font-size: 15px; font-weight: 700; color: var(--accent); }
   .inv-section-chevron { color: var(--muted); font-size: 13px; transition: transform 0.2s; }
+  .inv-action-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border-radius: 8px; font-size: 18px; }
   .inv-section-chevron.open { transform: rotate(180deg); }
   .inv-items { border: 1px solid var(--border); border-radius: 0 0 12px 12px; overflow: hidden; }
   .inv-item {
@@ -572,9 +573,10 @@
     <!-- INVESTMENTS PAGE -->
     <div class="page" id="page-investments">
       <div class="section-header" style="margin-top:0">
-        <span class="section-title">My Wealth</span>
-        <span class="section-action" onclick="openAddInvModal()">+ Add</span>
+        <span class="section-title">Wealth</span>
+        <span class="section-action" onclick="openAddInvModal()" id="inv-add-btn-header">+ Add</span>
       </div>
+      <div class="filter-tabs" id="inv-filter-tabs" style="display:none"></div>
       <div id="inv-total-card-wrap"></div>
       <div id="inv-sections-wrap"></div>
       <div style="height:20px"></div>
@@ -689,8 +691,8 @@
         <select id="inv-item-section"></select>
       </div>
       <div class="field"><label>Name</label><input type="text" id="inv-item-name" placeholder="e.g. Yash Shares, Jio Blackrock"/></div>
-      <div class="field"><label>Current Value (₹)</label><input type="text" inputmode="numeric" id="inv-item-value" placeholder="e.g. 1,98,105" oninput="formatAmountInput(this)"/></div>
       <div class="field"><label>Invested Amount (₹) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" inputmode="numeric" id="inv-item-invested" placeholder="e.g. 2,99,416" oninput="formatAmountInput(this)"/></div>
+      <div class="field"><label>Current Value (₹)</label><input type="text" inputmode="numeric" id="inv-item-value" placeholder="e.g. 1,98,105" oninput="formatAmountInput(this)"/></div>
       <div class="field"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="inv-item-notes" placeholder="e.g. 8741 cash, 75gm given to Iba"/></div>
       <div class="field"><label>As of Date</label><input type="date" id="inv-item-date"/></div>
     </div>
@@ -918,6 +920,7 @@ let currentPage = 'home';
 let selectedColor = '#e8b86d';
 let payType = 'repay';
 let viewFilter = 'all'; // 'all', 'mine', or a specific user id
+let invViewFilter = 'mine'; // wealth tab filter — default to 'mine'
 
 async function loadAllData() {
   try {
@@ -1019,7 +1022,10 @@ function enterApp() {
     document.getElementById('dash-subtitle').textContent = 'Family mode — your data only';
   }
   viewFilter = 'mine';
+  invViewFilter = 'mine';
   document.getElementById('fab-btn').style.display = 'flex';
+  // Seed wealth data for this user if first time (async, non-blocking)
+  seedYashWealthData(currentUser.id).catch(function(e){ console.warn('Seed skipped:', e); });
   // Always go to home page on login regardless of previous page
   navTo('home');
   renderSettings();
@@ -1041,7 +1047,7 @@ function navTo(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page)?.classList.add('active');
   currentPage = page;
-  if (page === 'home') { renderDashboard(); renderInterestPage(); }
+  if (page === 'home') { renderDashboard(); renderInterestPage(); maybeRefreshInvTotal(); }
   if (page === 'borrowers') renderBorrowers();
   if (page === 'interest') renderInterestPage();
   if (page === 'settings') renderSettings();
@@ -1111,6 +1117,11 @@ function setFilter(f) {
   renderBorrowers();
 }
 
+function maybeRefreshInvTotal() {
+  if (document.getElementById('page-investments') && document.getElementById('page-investments').classList.contains('active')) {
+    renderInvestments(); // async, returns promise — fire and forget
+  }
+}
 function renderDashboard() {
   const borrowers = getFilteredBorrowers();
   let totalGiven = 0, totalReturned = 0;
@@ -1132,58 +1143,84 @@ function initDragHandle(handle) {
   const card = handle.closest('.borrower-card');
   if (!card) return;
   let isDragging = false, startY, currentY, dragIdx, targetIdx, rafId;
+
   function getClientY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
-  function getCards() { return Array.from(document.querySelectorAll('#borrowers-list .borrower-card')); }
+  function getCards() { return Array.from(document.querySelectorAll('.borrower-card')); }
+
   function onStart(e) {
     if (e.button && e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
-    isDragging = true; startY = currentY = getClientY(e);
+    isDragging = true;
+    startY = currentY = getClientY(e);
     dragIdx = targetIdx = getCards().indexOf(card);
     card.classList.add('is-dragging');
     document.querySelector('.scroll-area').style.overflow = 'hidden';
-    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onEnd);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
   }
+
   function onMove(e) {
-    if (!isDragging) return; e.preventDefault(); currentY = getClientY(e);
+    if (!isDragging) return;
+    e.preventDefault();
+    currentY = getClientY(e);
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
-      const cards = getCards(); let newTarget = dragIdx;
+      const cards = getCards();
+      let newTarget = dragIdx;
       for (let i = 0; i < cards.length; i++) {
         if (cards[i] === card) continue;
-        const r = cards[i].getBoundingClientRect(), mid = r.top + r.height / 2;
+        const r = cards[i].getBoundingClientRect();
+        const mid = r.top + r.height / 2;
         if (i < dragIdx && currentY < mid) { newTarget = i; break; }
         if (i > dragIdx && currentY > mid) newTarget = i;
       }
-      cards.forEach(c => c.classList.remove('drag-above','drag-below'));
+      cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
       if (newTarget !== dragIdx) cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
       targetIdx = newTarget;
     });
   }
+
   function onEnd(e) {
-    if (!isDragging) return; isDragging = false;
-    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
-    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
     card.classList.remove('is-dragging');
-    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above','drag-below'));
+    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above', 'drag-below'));
     document.querySelector('.scroll-area').style.overflow = '';
     if (targetIdx !== dragIdx) {
-      const filtered = getFilteredBorrowers();
-      const fi = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
-      const ti = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
-      if (fi !== -1 && ti !== -1) {
-        const [m] = DB.borrowers.splice(fi, 1); DB.borrowers.splice(ti, 0, m);
-        DB.borrowers.forEach((b,i) => b.sort_order = i+1);
-        renderBorrowers(); renderInterestPage(); saveSortOrder();
+      const allCards = getCards();
+      const draggedId = card.dataset.id;
+      const targetId = allCards[targetIdx]?.dataset.id;
+      if (draggedId && targetId && draggedId !== targetId) {
+        const fi = DB.borrowers.findIndex(b => b.id === draggedId);
+        const ti = DB.borrowers.findIndex(b => b.id === targetId);
+        if (fi !== -1 && ti !== -1) {
+          const [moved] = DB.borrowers.splice(fi, 1);
+          DB.borrowers.splice(ti, 0, moved);
+          DB.borrowers.forEach((b, i) => b.sort_order = i + 1);
+          renderBorrowers();
+          saveSortOrder();
+        }
       }
     }
   }
+
   handle.addEventListener('mousedown', onStart);
   handle.addEventListener('touchstart', onStart, { passive: false });
 }
+
 async function saveSortOrder() {
-  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, {sort_order: i+1}))); showToast('✅ Order saved'); }
-  catch(e) { showToast('⚠️ Could not save order'); }
+  try {
+    await Promise.all(DB.borrowers.map((b, i) => dbUpdate('lb_borrowers', b.id, { sort_order: i + 1 })));
+    showToast('✅ Order saved');
+  } catch(e) {
+    showToast('⚠️ Could not save order');
+  }
 }
 
 function renderBorrowers() {
@@ -1554,7 +1591,7 @@ async function saveBorrower() {
     });
     DB.borrowers.push(b);
     closeModal('modal-borrower');
-    renderDashboard(); renderInterestPage(); renderBorrowers();
+    renderDashboard(); renderInterestPage(); maybeRefreshInvTotal(); renderBorrowers(); maybeRefreshInvTotal();
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -1588,7 +1625,7 @@ async function saveEditPayment() {
     if (idx !== -1) DB.payments[idx] = { ...DB.payments[idx], ...data };
     closeModal('modal-edit-payment');
     openDetail(currentBorrowerId);
-    renderDashboard(); renderInterestPage();
+    renderDashboard(); renderInterestPage(); maybeRefreshInvTotal();
   } catch(e) { alert('Error: ' + e.message); }
 }
 async function deletePayment() {
@@ -1598,7 +1635,7 @@ async function deletePayment() {
     DB.payments = DB.payments.filter(p => p.id !== id);
     closeModal('modal-edit-payment');
     openDetail(currentBorrowerId);
-    renderDashboard(); renderInterestPage();
+    renderDashboard(); renderInterestPage(); maybeRefreshInvTotal();
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -2166,7 +2203,7 @@ async function importData(event) {
       }
       await loadAllData();
       showToast('✅ Import done!');
-      renderDashboard(); renderInterestPage();
+      renderDashboard(); renderInterestPage(); maybeRefreshInvTotal();
     } catch(err) { showToast('❌ Import failed: ' + err.message); }
   };
   reader.readAsText(file);
@@ -2187,68 +2224,138 @@ function showToast(msg) {
   t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
 }
 
-// ========== INVESTMENTS ==========
-function getInvData() {
-  try { return JSON.parse(localStorage.getItem('lb_investments') || 'null') || { sections: [], items: [] }; } catch { return { sections: [], items: [] }; }
-}
-function saveInvData(data) { localStorage.setItem('lb_investments', JSON.stringify(data)); }
+// ========== INVESTMENTS (Supabase-backed) ==========
+// All wealth data lives in lb_wealth table:
+// { id, user_id, type('section'|'item'), section_id, name, value, invested, notes, date, sort_order }
 
-function initInvData() {
-  const existing = getInvData();
-  if (existing.sections.length > 0) return;
-  const data = {
-    sections: [
-      { id: 'sec-shares', name: 'Shares', order: 0 },
-      { id: 'sec-ppf', name: 'PPF', order: 1 },
-      { id: 'sec-mf', name: 'Mutual Funds', order: 2 },
-      { id: 'sec-silver', name: 'Silver', order: 3 }
-    ],
-    items: [
-      { id: 'itm-yash', sectionId: 'sec-shares', name: 'Yash Shares', value: 198105, invested: 299416, notes: '8,741 cash · +51.14% returns', date: '2026-02-05' },
-      { id: 'itm-srushti', sectionId: 'sec-shares', name: 'Srushti Shares', value: 332959, invested: 457782, notes: '+37.49% returns', date: '2026-02-05' },
-      { id: 'itm-nse', sectionId: 'sec-shares', name: 'NSE Shares', value: 100000, invested: 100000, notes: '', date: '' },
-      { id: 'itm-mse', sectionId: 'sec-shares', name: 'MSE Shares', value: 100000, invested: 100000, notes: '', date: '' },
-      { id: 'itm-ppf', sectionId: 'sec-ppf', name: 'PPF', value: 780965, invested: 0, notes: 'Mar 2026', date: '2026-03-31' },
-      { id: 'itm-mfmain', sectionId: 'sec-mf', name: 'Mutual Funds Portfolio', value: 792403, invested: 816328, notes: '+4.2% returns', date: '' },
-      { id: 'itm-jio', sectionId: 'sec-mf', name: 'Jio Blackrock', value: 15000, invested: 15000, notes: '', date: '' },
-      { id: 'itm-us', sectionId: 'sec-mf', name: 'US Stocks (Copper)', value: 10000, invested: 10000, notes: '', date: '' },
-      { id: 'itm-silver', sectionId: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2025-08-23' }
-    ]
-  };
-  saveInvData(data);
+async function loadWealthData(userId) {
+  const uid = userId || (currentUser ? currentUser.id : null);
+  if (!uid) return { sections: [], items: [] };
+  try {
+    const rows = await dbSelect('lb_wealth', 'user_id=eq.' + uid + '&order=sort_order.asc,created_at.asc');
+    return {
+      sections: rows.filter(function(r){ return r.type === 'section'; }),
+      items: rows.filter(function(r){ return r.type === 'item'; })
+    };
+  } catch(e) { console.error('loadWealthData failed', e); return { sections: [], items: [] }; }
+}
+
+async function wealthInsert(row) {
+  return sbFetch('lb_wealth', { method: 'POST', body: JSON.stringify(row) });
+}
+async function wealthUpdate(id, patch) {
+  return sbFetch('lb_wealth?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+async function wealthDelete(id) {
+  return sbFetch('lb_wealth?id=eq.' + id, { method: 'DELETE' });
+}
+async function wealthDeleteWhere(query) {
+  return sbFetch('lb_wealth?' + query, { method: 'DELETE' });
 }
 
 function fmtInv(n) {
-  if (n === 0) return '₹0';
+  if (n === 0) return '\u20B90';
   if (!n) return '';
   return '\u20B9' + Number(n).toLocaleString('en-IN');
 }
 
-function renderInvestments() {
-  initInvData();
-  const data = getInvData();
-  const sections = [...data.sections].sort((a,b) => (a.order||0)-(b.order||0));
-  let grandTotal = 0, grandInvested = 0;
-  data.items.forEach(it => { grandTotal += it.value||0; grandInvested += it.invested||0; });
-  const grandGain = grandTotal - grandInvested;
-  const grandPct = grandInvested > 0 ? ((grandGain/grandInvested)*100).toFixed(1) : null;
+function getTotalLentForUser(userId) {
+  const borrowers = userId
+    ? DB.borrowers.filter(function(b){ return b.owner_id === userId; })
+    : DB.borrowers;
+  return borrowers.reduce(function(sum, b){ return sum + Math.max(0, getBalance(b.id)); }, 0);
+}
+
+function renderInvFilterTabs() {
+  const el = document.getElementById('inv-filter-tabs');
+  if (!el) return;
+  if (!isOwner()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const otherUsers = DB.users.filter(function(u){ return u.id !== currentUser.id; });
+  if (otherUsers.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  const tabs = [{ id: 'mine', label: 'My Data' }, { id: 'all', label: 'All' }];
+  otherUsers.forEach(function(u){ tabs.push({ id: u.id, label: u.name + "'s" }); });
+  el.innerHTML = tabs.map(function(t){
+    return '<div class="filter-tab' + (invViewFilter===t.id?' active':'') + '" data-inv-filter="' + t.id + '">' + t.label + '</div>';
+  }).join('');
+  el.onclick = function(e) {
+    const tab = e.target.closest('[data-inv-filter]');
+    if (!tab) return;
+    invViewFilter = tab.dataset.invFilter;
+    renderInvestments();
+  };
+}
+
+function getInvTargetUserId() {
+  if (invViewFilter === 'mine') return currentUser ? currentUser.id : null;
+  if (invViewFilter === 'all') return currentUser ? currentUser.id : null;
+  return invViewFilter;
+}
+
+async function renderInvestments() {
+  const targetUserId = getInvTargetUserId();
+  const viewingOwnData = !targetUserId || (currentUser && targetUserId === currentUser.id);
+  const canEdit = viewingOwnData || isOwner();
+  window._invEditingUserId = viewingOwnData ? (currentUser ? currentUser.id : null) : targetUserId;
+
+  renderInvFilterTabs();
+  const addBtn = document.getElementById('inv-add-btn-header');
+  if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
+
+  // Show loading state
+  document.getElementById('inv-sections-wrap').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:14px">Loading...</div>';
+
+  const data = await loadWealthData(window._invEditingUserId);
+  const sections = data.sections.slice().sort(function(a,b){ return (a.sort_order||0)-(b.sort_order||0); });
+
+  const loanTotal = getTotalLentForUser(window._invEditingUserId);
+  let invTotal = 0, invInvested = 0;
+  data.items.forEach(function(it) { invTotal += Number(it.value)||0; invInvested += Number(it.invested)||0; });
+  const grandTotal = invTotal + loanTotal;
+  const grandGain = invTotal - invInvested;
+  const grandPct = invInvested > 0 ? ((grandGain/invInvested)*100).toFixed(1) : null;
 
   document.getElementById('inv-total-card-wrap').innerHTML =
     '<div class="inv-total-card">' +
     '<div class="inv-total-label">Total Portfolio Value</div>' +
     '<div class="inv-total-value">' + fmtInv(grandTotal) + '</div>' +
-    (grandInvested > 0 ? '<div class="inv-total-sub">Invested: ' + fmtInv(grandInvested) +
+    (invInvested > 0 ? '<div class="inv-total-sub">Investments: ' + fmtInv(invTotal) +
       ' &nbsp;&middot;&nbsp; <span style="color:' + (grandGain>=0?'var(--accent2)':'var(--danger)') + '">' +
-      (grandGain>=0?'+':'') + fmtInv(grandGain) + (grandPct?' ('+grandPct+'%)':'') + '</span></div>' : '') +
+      (grandGain>=0?'+':'') + fmtInv(grandGain) + (grandPct?' ('+grandPct+'%)':'') + '</span>' +
+      (loanTotal > 0 ? ' &nbsp;&middot;&nbsp; Loans: ' + fmtInv(loanTotal) : '') + '</div>' : '') +
     '</div>';
 
   let html = '';
+
+  // Auto loans section (collapsed by default)
+  if (loanTotal > 0) {
+    html += '<div class="inv-section">' +
+      '<div class="inv-section-header" data-toggle="loans-auto">' +
+      '<div><div class="inv-section-title">Loans Given</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:1px">Auto from Loans tab</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div class="inv-section-total">' + fmtInv(loanTotal) + '</div>' +
+      '<div class="inv-section-chevron" id="chev-loans-auto">&#9660;</div>' +
+      '</div></div>' +
+      '<div class="inv-items" id="invitems-loans-auto" style="display:none">' +
+      '<div class="inv-item"><div class="inv-item-left"><div class="inv-item-name">Outstanding Loans</div>' +
+      '<div class="inv-item-meta">Updates automatically from Loans tab</div></div>' +
+      '<div class="inv-item-right"><div class="inv-item-value">' + fmtInv(loanTotal) + '</div></div></div>' +
+      '</div></div>';
+  }
+
   sections.forEach(function(sec) {
-    const items = data.items.filter(function(it){ return it.sectionId === sec.id; });
-    const secTotal = items.reduce(function(s,it){ return s+(it.value||0); }, 0);
+    const items = data.items.filter(function(it){ return it.section_id === sec.id; });
+    const secTotal = items.reduce(function(s,it){ return s+Number(it.value||0); }, 0);
+
     let itemsHtml = items.map(function(it) {
-      const gain = (it.value||0) - (it.invested||0);
-      const pct = it.invested > 0 ? ((gain/it.invested)*100).toFixed(1) : null;
+      const gain = Number(it.value||0) - Number(it.invested||0);
+      const pct = Number(it.invested) > 0 ? ((gain/Number(it.invested))*100).toFixed(1) : null;
+      const editBtns = canEdit
+        ? '<div style="display:flex;gap:12px;margin-top:8px;justify-content:flex-end;align-items:center">' +
+          '<span class="inv-action-btn" data-edit-item="' + it.id + '" style="font-size:20px;cursor:pointer;color:var(--muted);padding:4px">&#9998;</span>' +
+          '<span class="inv-action-btn" data-del-item="' + it.id + '" style="font-size:20px;cursor:pointer;color:var(--danger);padding:4px">&#128465;</span>' +
+          '</div>' : '';
       return '<div class="inv-item">' +
         '<div class="inv-item-left">' +
         '<div class="inv-item-name">' + it.name + '</div>' +
@@ -2256,42 +2363,59 @@ function renderInvestments() {
         (it.date ? '<div class="inv-item-meta" style="opacity:0.5">As of ' + it.date + '</div>' : '') +
         '</div>' +
         '<div class="inv-item-right">' +
-        '<div class="inv-item-value">' + fmtInv(it.value) + '</div>' +
-        (it.invested > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Cost: ' + fmtInv(it.invested) + '</div>' : '') +
+        '<div class="inv-item-value">' + fmtInv(Number(it.value)) + '</div>' +
+        (Number(it.invested) > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Cost: ' + fmtInv(Number(it.invested)) + '</div>' : '') +
         (pct ? '<div class="inv-item-gain ' + (gain>=0?'pos':'neg') + '">' + (gain>=0?'+':'') + fmtInv(gain) + ' (' + pct + '%)</div>' : '') +
-        '<div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">' +
-        '<span onclick="openEditInvItem(\'' + it.id + '\')" style="color:var(--muted);cursor:pointer;font-size:13px">&#9998;</span>' +
-        '<span onclick="deleteInvItem(\'' + it.id + '\')" style="color:var(--danger);cursor:pointer;font-size:13px">&#128465;</span>' +
-        '</div></div></div>';
+        editBtns + '</div></div>';
     }).join('');
-    itemsHtml += '<div class="inv-add-btn" onclick="openAddInvItem(\'' + sec.id + '\')">+ Add item</div>';
+
+    if (canEdit) itemsHtml += '<div class="inv-add-btn" data-add-item="' + sec.id + '">+ Add item to ' + sec.name + '</div>';
+
+    const editSecBtns = canEdit
+      ? '<span class="inv-action-btn" data-edit-sec="' + sec.id + '" style="font-size:15px;cursor:pointer;color:var(--muted);padding:4px">&#9998;</span>' +
+        '<span class="inv-action-btn" data-del-sec="' + sec.id + '" style="font-size:15px;cursor:pointer;color:var(--danger);padding:4px">&#215;</span>'
+      : '';
 
     html += '<div class="inv-section">' +
-      '<div class="inv-section-header" onclick="toggleInvSection(\'" + sec.id + "\')">' +
+      '<div class="inv-section-header" data-toggle="' + sec.id + '">' +
       '<div><div class="inv-section-title">' + sec.name + '</div>' +
       '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + items.length + ' item' + (items.length!==1?'s':'') + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<div class="inv-section-total">' + fmtInv(secTotal) + '</div>' +
-      '<div class="inv-section-chevron open" id="chev-' + sec.id + '">&#9660;</div>' +
-      '<span onclick="event.stopPropagation();deleteInvSection(\'' + sec.id + '\')" style="color:var(--danger);font-size:14px;cursor:pointer;padding:2px 4px">&#215;</span>' +
-      '</div></div>' +
-      '<div class="inv-items" id="invitems-' + sec.id + '">' + itemsHtml + '</div>' +
+      '<div class="inv-section-chevron" id="chev-' + sec.id + '">&#9660;</div>' +
+      editSecBtns + '</div></div>' +
+      '<div class="inv-items" id="invitems-' + sec.id + '" style="display:none">' + itemsHtml + '</div>' +
       '</div>';
   });
+
   document.getElementById('inv-sections-wrap').innerHTML = html;
+  document.getElementById('inv-sections-wrap').onclick = function(e) {
+    const btn = e.target.closest('[data-toggle],[data-edit-item],[data-del-item],[data-add-item],[data-del-sec],[data-edit-sec]');
+    if (!btn) return;
+    e.stopPropagation();
+    if (btn.dataset.toggle) { toggleInvSection(btn.dataset.toggle); return; }
+    if (btn.dataset.editItem) { openEditInvItem(btn.dataset.editItem, data); return; }
+    if (btn.dataset.delItem) { deleteInvItem(btn.dataset.delItem); return; }
+    if (btn.dataset.addItem) { openAddInvItem(btn.dataset.addItem, data.sections); return; }
+    if (btn.dataset.delSec) { deleteInvSection(btn.dataset.delSec); return; }
+    if (btn.dataset.editSec) { openRenameSec(btn.dataset.editSec, data.sections); return; }
+  };
 }
 
 function toggleInvSection(secId) {
   const items = document.getElementById('invitems-' + secId);
   const chev = document.getElementById('chev-' + secId);
   if (!items) return;
-  if (items.style.display === 'none') {
-    items.style.display = '';
-    chev.classList.add('open');
-  } else {
-    items.style.display = 'none';
-    chev.classList.remove('open');
-  }
+  if (items.style.display === 'none') { items.style.display = ''; if(chev) chev.classList.add('open'); }
+  else { items.style.display = 'none'; if(chev) chev.classList.remove('open'); }
+}
+
+function openRenameSec(secId, sections) {
+  const sec = sections.find(function(s){ return s.id === secId; });
+  if (!sec) return;
+  const newName = prompt('Rename category:', sec.name);
+  if (!newName || !newName.trim() || newName.trim() === sec.name) return;
+  wealthUpdate(secId, { name: newName.trim() }).then(function(){ renderInvestments(); });
 }
 
 let invModalTab = 'section';
@@ -2303,10 +2427,11 @@ function setInvModalTab(tab) {
   document.getElementById('invtab-item').classList.toggle('active', tab==='item');
 }
 
-function populateSectionSelect(selectedId) {
-  const data = getInvData();
+function populateSectionSelect(sections, selectedId) {
   const sel = document.getElementById('inv-item-section');
-  sel.innerHTML = data.sections.map(function(s){ return '<option value="' + s.id + '"' + (s.id===selectedId?' selected':'') + '>' + s.name + '</option>'; }).join('');
+  sel.innerHTML = sections.map(function(s){
+    return '<option value="' + s.id + '"' + (s.id===selectedId?' selected':'') + '>' + s.name + '</option>';
+  }).join('');
 }
 
 function openAddInvModal() {
@@ -2318,45 +2443,46 @@ function openAddInvModal() {
   document.getElementById('inv-item-invested').value = '';
   document.getElementById('inv-item-notes').value = '';
   document.getElementById('inv-item-date').value = new Date().toISOString().split('T')[0];
-  populateSectionSelect('');
+  loadWealthData(window._invEditingUserId).then(function(data){ populateSectionSelect(data.sections, ''); });
   setInvModalTab('section');
   document.getElementById('modal-inv').classList.add('open');
 }
 
-function openAddInvItem(sectionId) {
+function openAddInvItem(sectionId, sections) {
   openAddInvModal();
-  setInvModalTab('item');
-  populateSectionSelect(sectionId);
+  setTimeout(function(){ setInvModalTab('item'); populateSectionSelect(sections, sectionId); }, 10);
 }
 
-function openEditInvItem(itemId) {
-  const data = getInvData();
-  const item = data.items.find(function(it){ return it.id===itemId; });
+function openEditInvItem(itemId, data) {
+  const item = data.items.find(function(it){ return it.id === itemId; });
   if (!item) return;
   document.getElementById('inv-modal-title').textContent = 'Edit Item';
   document.getElementById('inv-edit-item-id').value = itemId;
-  populateSectionSelect(item.sectionId);
   document.getElementById('inv-item-name').value = item.name;
   document.getElementById('inv-item-value').value = item.value || '';
   document.getElementById('inv-item-invested').value = item.invested || '';
   document.getElementById('inv-item-notes').value = item.notes || '';
   document.getElementById('inv-item-date').value = item.date || '';
+  populateSectionSelect(data.sections, item.section_id);
   setInvModalTab('item');
   document.getElementById('modal-inv').classList.add('open');
 }
 
-function saveInvModal() {
-  const data = getInvData();
+async function saveInvModal() {
+  const uid = window._invEditingUserId;
   const editItemId = document.getElementById('inv-edit-item-id').value;
+
   if (invModalTab === 'section') {
     const name = document.getElementById('inv-sec-name').value.trim();
     if (!name) { showToast('Please enter a category name'); return; }
-    data.sections.push({ id: 'sec-' + Date.now(), name: name, order: data.sections.length });
-    saveInvData(data);
+    const data = await loadWealthData(uid);
+    const maxOrder = data.sections.reduce(function(m,s){ return Math.max(m, s.sort_order||0); }, -1);
+    await wealthInsert({ id: 'sec-' + Date.now(), user_id: uid, type: 'section', name: name, sort_order: maxOrder + 1 });
     closeModal('modal-inv');
     renderInvestments();
     return;
   }
+
   const sectionId = document.getElementById('inv-item-section').value;
   const name = document.getElementById('inv-item-name').value.trim();
   const value = parseFloat((document.getElementById('inv-item-value').value||'0').replace(/,/g,'')) || 0;
@@ -2364,44 +2490,74 @@ function saveInvModal() {
   const notes = document.getElementById('inv-item-notes').value.trim();
   const date = document.getElementById('inv-item-date').value;
   if (!name) { showToast('Please enter item name'); return; }
+
   if (editItemId) {
-    const idx = data.items.findIndex(function(it){ return it.id===editItemId; });
-    if (idx !== -1) data.items[idx] = Object.assign({}, data.items[idx], { sectionId: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
+    await wealthUpdate(editItemId, { section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
   } else {
-    data.items.push({ id: 'itm-' + Date.now(), sectionId: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
+    const data = await loadWealthData(uid);
+    const maxOrder = data.items.filter(function(i){ return i.section_id===sectionId; }).reduce(function(m,i){ return Math.max(m,i.sort_order||0); }, -1);
+    await wealthInsert({ id: 'itm-' + Date.now(), user_id: uid, type: 'item', section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date, sort_order: maxOrder + 1 });
   }
-  saveInvData(data);
   closeModal('modal-inv');
   renderInvestments();
 }
 
-function deleteInvItem(itemId) {
+async function deleteInvItem(itemId) {
   if (!confirm('Delete this item?')) return;
-  const data = getInvData();
-  data.items = data.items.filter(function(it){ return it.id !== itemId; });
-  saveInvData(data);
+  await wealthDelete(itemId);
   renderInvestments();
 }
 
-function deleteInvSection(secId) {
-  const data = getInvData();
-  const count = data.items.filter(function(it){ return it.sectionId===secId; }).length;
+async function deleteInvSection(secId) {
+  const data = await loadWealthData(window._invEditingUserId);
+  const count = data.items.filter(function(it){ return it.section_id===secId; }).length;
   if (count > 0 && !confirm('Delete this category and all ' + count + ' item(s) in it?')) return;
-  data.sections = data.sections.filter(function(s){ return s.id !== secId; });
-  data.items = data.items.filter(function(it){ return it.sectionId !== secId; });
-  saveInvData(data);
+  // Delete items first, then section
+  await Promise.all(data.items.filter(function(it){ return it.section_id===secId; }).map(function(it){ return wealthDelete(it.id); }));
+  await wealthDelete(secId);
   renderInvestments();
 }
 
-
-// ========== INIT ==========
-(async () => {
-  const savedName = localStorage.getItem('loanbook_name');
-  if (savedName) {
-    document.getElementById('login-name').value = savedName;
-    document.getElementById('login-pin').focus();
-  }
-})();
+// Seed YOUR current wealth data into Supabase on first load
+// This runs once — checks if you already have data, if not inserts everything from screenshots
+async function seedYashWealthData(userId) {
+  const existing = await loadWealthData(userId);
+  if (existing.sections.length > 0) return; // already seeded
+  const now = Date.now();
+  const rows = [
+    // Sections
+    { id: 'sec-shares', user_id: userId, type: 'section', name: 'Shares', sort_order: 0 },
+    { id: 'sec-ppf', user_id: userId, type: 'section', name: 'PPF', sort_order: 1 },
+    { id: 'sec-mf', user_id: userId, type: 'section', name: 'Mutual Funds', sort_order: 2 },
+    { id: 'sec-silver', user_id: userId, type: 'section', name: 'Gold & Silver', sort_order: 3 },
+    { id: 'sec-bank', user_id: userId, type: 'section', name: 'Bank Balance', sort_order: 4 },
+    { id: 'sec-cash', user_id: userId, type: 'section', name: 'Cash', sort_order: 5 },
+    // Shares
+    { id: 'itm-yash', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Yash Shares', value: 277807, invested: 191205, notes: '86,635 (Profit) - 45.35%', date: '2026-04-17', sort_order: 0 },
+    { id: 'itm-srushti', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Srushti Shares', value: 447340, invested: 332959, notes: '1,14,343 Profit - 34.35%', date: '2026-04-05', sort_order: 1 },
+    { id: 'itm-nse', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'NSE Shares', value: 112000, invested: 100000, notes: '60 Shares at 1,00,000', date: '2026-04-17', sort_order: 2 },
+    { id: 'itm-mse', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'MSE Shares', value: 114750, invested: 102000, notes: '17,000 Shares at 1,02,000', date: '2026-04-17', sort_order: 3 },
+    { id: 'itm-copper', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Copper (US Stocks)', value: 11000, invested: 10000, notes: 'Copper Via IND Money (US Stock)', date: '2026-04-17', sort_order: 4 },
+    // PPF
+    { id: 'itm-ppf', user_id: userId, type: 'item', section_id: 'sec-ppf', name: 'PPF', value: 780965, invested: 607500, notes: '7.1% interest - 28.55% Return', date: '2026-03-31', sort_order: 0 },
+    // Mutual Funds
+    { id: 'itm-mfmain', user_id: userId, type: 'item', section_id: 'sec-mf', name: 'Mutual Funds Portfolio', value: 875033, invested: 793403, notes: '14.89% CAGR', date: '2026-04-17', sort_order: 0 },
+    { id: 'itm-jio', user_id: userId, type: 'item', section_id: 'sec-mf', name: 'Jio Blackrock', value: 14600, invested: 15000, notes: 'via Jio App', date: '2026-04-17', sort_order: 1 },
+    // Gold & Silver
+    { id: 'itm-silver', user_id: userId, type: 'item', section_id: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2026-02-23', sort_order: 0 },
+    // Bank Balance
+    { id: 'itm-idfc', user_id: userId, type: 'item', section_id: 'sec-bank', name: 'Srushti IDFC Bank', value: 150000, invested: 150000, notes: 'Srushti Bank Account', date: '2026-04-17', sort_order: 0 },
+    { id: 'itm-suryoday', user_id: userId, type: 'item', section_id: 'sec-bank', name: "Srushti Suryoday's Account", value: 881000, invested: 881000, notes: 'Balance', date: '2026-04-17', sort_order: 1 },
+    // Cash
+    { id: 'itm-cash1', user_id: userId, type: 'item', section_id: 'sec-cash', name: 'Cash', value: 50000, invested: 50000, notes: 'Cash by Neel - B/W', date: '2026-04-17', sort_order: 0 },
+    { id: 'itm-cash2', user_id: userId, type: 'item', section_id: 'sec-cash', name: 'Cash - Dad ++', value: 27000, invested: 27000, notes: 'Cash from Dad, interest etc', date: '2026-04-17', sort_order: 1 }
+  ];
+  // Insert all rows (Supabase accepts array insert)
+  try {
+    await sbFetch('lb_wealth', { method: 'POST', body: JSON.stringify(rows) });
+    console.log('Wealth data seeded successfully');
+  } catch(e) { console.error('Seed failed:', e); }
+}
 </script>
 </body>
 </html>
