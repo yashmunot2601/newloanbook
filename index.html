@@ -171,12 +171,12 @@
     cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
   }
   .borrower-card:active { transform: scale(0.98); }
-  .borrower-card.is-dragging { opacity: 0.45; box-shadow: 0 10px 40px rgba(0,0,0,0.6); pointer-events: none; }
-  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; }
-  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; }
-  .drag-handle { width: 28px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 20px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
-  .drag-handle:hover { color: var(--accent); }
-  .drag-handle:active { cursor: grabbing; }
+  .borrower-card.is-dragging { opacity: 0.5; transform: scale(1.02); box-shadow: 0 16px 48px rgba(0,0,0,0.7); z-index: 100; border-color: var(--accent) !important; }
+  .borrower-card.drag-above { border-top: 3px solid var(--accent) !important; margin-top: 2px; }
+  .borrower-card.drag-below { border-bottom: 3px solid var(--accent) !important; margin-bottom: 2px; }
+  .drag-handle { width: 36px; display: flex; align-items: center; justify-content: center; color: var(--border); font-size: 22px; cursor: grab; flex-shrink: 0; touch-action: none; user-select: none; -webkit-user-select: none; padding-right: 4px; }
+  .drag-handle:hover { color: var(--muted); }
+  .drag-handle:active { cursor: grabbing; color: var(--accent); }
   .borrower-card-top { display: flex; align-items: center; gap: 12px; }
   .borrower-avatar {
     width: 42px; height: 42px; border-radius: 12px;
@@ -1143,58 +1143,84 @@ function initDragHandle(handle) {
   const card = handle.closest('.borrower-card');
   if (!card) return;
   let isDragging = false, startY, currentY, dragIdx, targetIdx, rafId;
+
   function getClientY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
-  function getCards() { return Array.from(document.querySelectorAll('#borrowers-list .borrower-card')); }
+  function getCards() { return Array.from(document.querySelectorAll('.borrower-card')); }
+
   function onStart(e) {
     if (e.button && e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
-    isDragging = true; startY = currentY = getClientY(e);
+    isDragging = true;
+    startY = currentY = getClientY(e);
     dragIdx = targetIdx = getCards().indexOf(card);
     card.classList.add('is-dragging');
     document.querySelector('.scroll-area').style.overflow = 'hidden';
-    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onEnd);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
   }
+
   function onMove(e) {
-    if (!isDragging) return; e.preventDefault(); currentY = getClientY(e);
+    if (!isDragging) return;
+    e.preventDefault();
+    currentY = getClientY(e);
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
-      const cards = getCards(); let newTarget = dragIdx;
+      const cards = getCards();
+      let newTarget = dragIdx;
       for (let i = 0; i < cards.length; i++) {
         if (cards[i] === card) continue;
-        const r = cards[i].getBoundingClientRect(), mid = r.top + r.height / 2;
+        const r = cards[i].getBoundingClientRect();
+        const mid = r.top + r.height / 2;
         if (i < dragIdx && currentY < mid) { newTarget = i; break; }
         if (i > dragIdx && currentY > mid) newTarget = i;
       }
-      cards.forEach(c => c.classList.remove('drag-above','drag-below'));
+      cards.forEach(c => c.classList.remove('drag-above', 'drag-below'));
       if (newTarget !== dragIdx) cards[newTarget].classList.add(newTarget < dragIdx ? 'drag-above' : 'drag-below');
       targetIdx = newTarget;
     });
   }
+
   function onEnd(e) {
-    if (!isDragging) return; isDragging = false;
-    document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
-    document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
     card.classList.remove('is-dragging');
-    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above','drag-below'));
+    document.querySelectorAll('.borrower-card').forEach(c => c.classList.remove('drag-above', 'drag-below'));
     document.querySelector('.scroll-area').style.overflow = '';
     if (targetIdx !== dragIdx) {
-      const filtered = getFilteredBorrowers();
-      const fi = DB.borrowers.findIndex(b => b.id === filtered[dragIdx]?.id);
-      const ti = DB.borrowers.findIndex(b => b.id === filtered[targetIdx]?.id);
-      if (fi !== -1 && ti !== -1) {
-        const [m] = DB.borrowers.splice(fi, 1); DB.borrowers.splice(ti, 0, m);
-        DB.borrowers.forEach((b,i) => b.sort_order = i+1);
-        renderBorrowers(); renderInterestPage(); saveSortOrder();
+      const allCards = getCards();
+      const draggedId = card.dataset.id;
+      const targetId = allCards[targetIdx]?.dataset.id;
+      if (draggedId && targetId && draggedId !== targetId) {
+        const fi = DB.borrowers.findIndex(b => b.id === draggedId);
+        const ti = DB.borrowers.findIndex(b => b.id === targetId);
+        if (fi !== -1 && ti !== -1) {
+          const [moved] = DB.borrowers.splice(fi, 1);
+          DB.borrowers.splice(ti, 0, moved);
+          DB.borrowers.forEach((b, i) => b.sort_order = i + 1);
+          renderBorrowers();
+          saveSortOrder();
+        }
       }
     }
   }
+
   handle.addEventListener('mousedown', onStart);
   handle.addEventListener('touchstart', onStart, { passive: false });
 }
+
 async function saveSortOrder() {
-  try { await Promise.all(DB.borrowers.map((b,i) => dbUpdate('lb_borrowers', b.id, {sort_order: i+1}))); showToast('✅ Order saved'); }
-  catch(e) { showToast('⚠️ Could not save order'); }
+  try {
+    await Promise.all(DB.borrowers.map((b, i) => dbUpdate('lb_borrowers', b.id, { sort_order: i + 1 })));
+    showToast('✅ Order saved');
+  } catch(e) {
+    showToast('⚠️ Could not save order');
+  }
 }
 
 function renderBorrowers() {
@@ -2203,6 +2229,10 @@ function showToast(msg) {
 // { id, user_id, type('section'|'item'), section_id, name, value, invested, notes, date, sort_order }
 
 async function loadWealthData(userId) {
+  // userId = null means load ALL users (for "All" filter)
+  if (userId === null && invViewFilter === 'all') {
+    return loadAllUsersWealthData();
+  }
   const uid = userId || (currentUser ? currentUser.id : null);
   if (!uid) return { sections: [], items: [] };
   try {
@@ -2212,6 +2242,42 @@ async function loadWealthData(userId) {
       items: rows.filter(function(r){ return r.type === 'item'; })
     };
   } catch(e) { console.error('loadWealthData failed', e); return { sections: [], items: [] }; }
+}
+
+async function loadAllUsersWealthData() {
+  // Load all rows for all users, merge sections by name, sum item values
+  try {
+    const rows = await dbSelect('lb_wealth', 'order=sort_order.asc,created_at.asc');
+    // Build merged sections (dedupe by name)
+    const allSections = rows.filter(function(r){ return r.type === 'section'; });
+    const allItems = rows.filter(function(r){ return r.type === 'item'; });
+
+    // Merge sections by name (case-insensitive), keep first occurrence's id
+    const mergedSections = [];
+    const sectionNameMap = {}; // name.lower -> merged section id
+    allSections.forEach(function(sec) {
+      const key = sec.name.toLowerCase().trim();
+      if (!sectionNameMap[key]) {
+        sectionNameMap[key] = sec.id;
+        mergedSections.push({ id: sec.id, name: sec.name, sort_order: sec.sort_order || 0 });
+      }
+    });
+
+    // Remap items to merged section ids
+    const mergedItems = allItems.map(function(it) {
+      // Find which merged section this item's original section belongs to
+      const origSec = allSections.find(function(s){ return s.id === it.section_id; });
+      if (!origSec) return it;
+      const key = origSec.name.toLowerCase().trim();
+      const mergedSecId = sectionNameMap[key];
+      return Object.assign({}, it, { section_id: mergedSecId });
+    });
+
+    return { sections: mergedSections, items: mergedItems };
+  } catch(e) {
+    console.error('loadAllUsersWealthData failed', e);
+    return { sections: [], items: [] };
+  }
 }
 
 async function wealthInsert(row) {
@@ -2262,15 +2328,16 @@ function renderInvFilterTabs() {
 
 function getInvTargetUserId() {
   if (invViewFilter === 'mine') return currentUser ? currentUser.id : null;
-  if (invViewFilter === 'all') return currentUser ? currentUser.id : null;
-  return invViewFilter;
+  if (invViewFilter === 'all') return null; // null = load all users
+  return invViewFilter; // specific user id
 }
 
 async function renderInvestments() {
   const targetUserId = getInvTargetUserId();
-  const viewingOwnData = !targetUserId || (currentUser && targetUserId === currentUser.id);
-  const canEdit = viewingOwnData || isOwner();
-  window._invEditingUserId = viewingOwnData ? (currentUser ? currentUser.id : null) : targetUserId;
+  const isAllView = invViewFilter === 'all';
+  const viewingOwnData = !isAllView && (!targetUserId || (currentUser && targetUserId === currentUser.id));
+  const canEdit = !isAllView && (viewingOwnData || isOwner()); // no editing in "All" merged view
+  window._invEditingUserId = isAllView ? (currentUser ? currentUser.id : null) : (viewingOwnData ? (currentUser ? currentUser.id : null) : targetUserId);
 
   renderInvFilterTabs();
   const addBtn = document.getElementById('inv-add-btn-header');
@@ -2282,7 +2349,7 @@ async function renderInvestments() {
   const data = await loadWealthData(window._invEditingUserId);
   const sections = data.sections.slice().sort(function(a,b){ return (a.sort_order||0)-(b.sort_order||0); });
 
-  const loanTotal = getTotalLentForUser(window._invEditingUserId);
+  const loanTotal = isAllView ? getTotalLentForUser(null) : getTotalLentForUser(window._invEditingUserId);
   let invTotal = 0, invInvested = 0;
   data.items.forEach(function(it) { invTotal += Number(it.value)||0; invInvested += Number(it.invested)||0; });
   const grandTotal = invTotal + loanTotal;
