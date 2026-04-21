@@ -622,7 +622,7 @@
         <div class="settings-item">
           <div>
             <div class="s-label">Export Data Only</div>
-            <div class="s-sub">JSON backup of all your data</div>
+            <div class="s-sub">JSON backup · PINs not included</div>
           </div>
           <div onclick="exportData()" style="color:var(--accent);cursor:pointer;font-weight:600;font-size:14px">Export</div>
         </div>
@@ -677,8 +677,9 @@
     <input type="hidden" id="inv-edit-id"/>
     <input type="hidden" id="inv-edit-item-id"/>
     <div class="inv-modal-tabs">
-      <div class="inv-modal-tab active" id="invtab-section" onclick="setInvModalTab('section')">New Category</div>
-      <div class="inv-modal-tab" id="invtab-item" onclick="setInvModalTab('item')">Add Item</div>
+      <div class="inv-modal-tab active" id="invtab-section" onclick="setInvModalTab('section')">Category</div>
+      <div class="inv-modal-tab" id="invtab-item" onclick="setInvModalTab('item')">Item</div>
+      <div class="inv-modal-tab" id="invtab-debt" onclick="setInvModalTab('debt')">Debt</div>
     </div>
     <!-- Section fields -->
     <div id="inv-section-fields">
@@ -695,6 +696,17 @@
       <div class="field"><label>Current Value (₹)</label><input type="text" inputmode="numeric" id="inv-item-value" placeholder="e.g. 1,98,105" oninput="formatAmountInput(this)"/></div>
       <div class="field"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="inv-item-notes" placeholder="e.g. 8741 cash, 75gm given to Iba"/></div>
       <div class="field"><label>As of Date</label><input type="date" id="inv-item-date"/></div>
+    </div>
+    <!-- Debt fields -->
+    <div id="inv-debt-fields" style="display:none">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;padding:10px 12px;background:rgba(232,112,109,0.08);border-radius:8px;border:1px solid rgba(232,112,109,0.25)">
+        💳 Debts are subtracted from your Net Worth.
+      </div>
+      <div class="field"><label>Debt Name</label><input type="text" id="inv-debt-name" placeholder="e.g. Home Loan, HDFC Credit Card"/></div>
+      <div class="field"><label>Amount Owed (₹)</label><input type="text" inputmode="numeric" id="inv-debt-value" placeholder="e.g. 50,000" oninput="formatAmountInput(this)"/></div>
+      <div class="field"><label>Original Amount (₹) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" inputmode="numeric" id="inv-debt-invested" placeholder="Initial loan amount" oninput="formatAmountInput(this)"/></div>
+      <div class="field"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="inv-debt-notes" placeholder="e.g. 8.5% interest, EMI ₹10,000/month"/></div>
+      <div class="field"><label>As of Date</label><input type="date" id="inv-debt-date"/></div>
     </div>
     <button class="btn btn-primary" style="margin-top:8px" onclick="saveInvModal()">Save</button>
     <button class="btn btn-secondary" style="margin-top:10px" onclick="closeModal('modal-inv')">Cancel</button>
@@ -906,13 +918,15 @@ async function dbDelete(table, query) {
 }
 
 // ========== STATE ==========
+// Fallback invite code used only if lb_settings is empty. The real code lives in Supabase.
+const DEFAULT_INVITE_CODE = 'YASH01';
 let DB = {
   users: [],
   borrowers: [],
   payments: [],
   ipeople: [],
   imonths: [],
-  inviteCode: 'LOANBOOK'
+  inviteCode: DEFAULT_INVITE_CODE
 };
 let currentUser = null;
 let currentBorrowerId = null;
@@ -937,7 +951,7 @@ async function loadAllData() {
     DB.payments = payments;
     DB.ipeople = ipeople;
     DB.imonths = imonths;
-    DB.inviteCode = settings[0]?.invite_code || 'YASH01';
+    DB.inviteCode = settings[0]?.invite_code || DEFAULT_INVITE_CODE;
   } catch(e) {
     console.error('loadAllData failed:', e);
     throw e; // re-throw so login shows real error
@@ -1024,8 +1038,6 @@ function enterApp() {
   viewFilter = 'mine';
   invViewFilter = 'mine';
   document.getElementById('fab-btn').style.display = 'flex';
-  // Seed wealth data for this user if first time (async, non-blocking)
-  seedYashWealthData(currentUser.id).catch(function(e){ console.warn('Seed skipped:', e); });
   // Always go to home page on login regardless of previous page
   navTo('home');
   renderSettings();
@@ -1494,25 +1506,18 @@ function getProRataInterest(borrowerId, rate, monthStr) {
   return Math.round(totalInterest);
 }
 
-// Get expected interest for PAST months — full month on opening balance.
-// Per spec: once a month has ended, you're owed the full interest regardless
-// of when within that month a repayment happened.
-function getExpectedInterestLastMonth(ip, monthStr) {
-  if (ip.source === 'borrower') {
-    const openingBalance = getBalanceAsOfMonth(ip.borrowerId, monthStr);
-    return Math.round(openingBalance * ip.rate / 100);
-  }
-  // Standalone ipeople: fixed principal
-  return Math.round(ip.amount * ip.rate / 100);
-}
-
-// Get expected interest for CURRENT month — pro-rata based on repayments within month
+// Expected interest for any month — pro-rata for borrowers (days × rate, accounting
+// for mid-month repayments), fixed for standalone ipeople. Used identically by the
+// grid cells AND the summary cards so the numbers always agree.
 function getExpectedInterest(ip, monthStr) {
   if (ip.source === 'borrower') {
     return getProRataInterest(ip.borrowerId, ip.rate, monthStr);
   }
   return Math.round(ip.amount * ip.rate / 100);
 }
+
+// Back-compat alias — old call sites may still reference this name.
+const getExpectedInterestLastMonth = getExpectedInterest;
 
 function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'}); }
@@ -1668,10 +1673,38 @@ function shortMonth(key) { const [y,m] = key.split('-'); return new Date(y,m-1,1
 
 let gridYear = new Date().getFullYear();
 
+// Decide whether a (settled) borrower should still appear on the interest grid.
+// Rules:
+//   - If they still owe principal → always show.
+//   - Else show only if there is at least one past/current month where they
+//     had an opening balance and the interest for that month hasn't been marked received.
+// Example: settled Apr 15 → April cell still owes ~15 days of pro-rata interest,
+// so the person stays on the grid until that April cell is marked ✅.
+// Example: settled Mar 31 → once March is marked ✅, they disappear on May 1.
+function shouldShowBorrowerOnGrid(b) {
+  if (getBalance(b.id) > 0) return true;
+  const now = new Date();
+  const thisMonth = monthKey(now);
+  const startStr = b.date ? b.date.substring(0, 7) : thisMonth;
+  const pid = 'B:' + b.id;
+  let cur = parseLocalDate(startStr + '-01');
+  const end = parseLocalDate(thisMonth + '-01');
+  while (cur <= end) {
+    const mk = monthKey(cur);
+    const rec = DB.imonths.find(m => m.pid === pid && m.month === mk);
+    if (!rec) {
+      const exp = getProRataInterest(b.id, b.rate, mk);
+      if (exp > 0) return true;
+    }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return false;
+}
+
 // Merge borrowers-with-rate + standalone ipeople into one unified list
 function getAllIpeople() {
   const fromBorrowers = DB.borrowers
-    .filter(b => b.rate > 0 && (getBalance(b.id) > 0 || getBalanceAsOfMonth(b.id, monthKey(new Date())) > 0)) // include if unsettled OR had opening balance this month (so pro-rata interest for current month is counted)
+    .filter(b => b.rate > 0 && shouldShowBorrowerOnGrid(b))
     .map(b => ({
       id: 'B:' + b.id,
       name: b.name,
@@ -2152,8 +2185,31 @@ function showNotifications() {
 }
 
 // ========== EXPORT / IMPORT ==========
-function exportData() {
-  const json = JSON.stringify(DB, null, 2);
+async function exportData() {
+  // Load wealth rows at export time — they aren't kept in DB state to avoid
+  // memory bloat on the Home/Loans pages. Debts live inside this table as
+  // items in a section named "Debts" (see loadWealthData for the convention).
+  let wealth = [];
+  try {
+    wealth = await dbSelect('lb_wealth', 'order=sort_order.asc,created_at.asc');
+  } catch(e) { console.warn('Wealth export skipped:', e); }
+
+  // Redact credentials before serialising. The existing import flow doesn't
+  // restore users or the invite code anyway, so losing these fields doesn't
+  // break anything — it just prevents backups from leaking plaintext PINs
+  // and the family invite code if a backup file is ever shared.
+  const safeUsers = (DB.users || []).map(function(u) {
+    const copy = Object.assign({}, u);
+    delete copy.pin;
+    return copy;
+  });
+  const payload = Object.assign({}, DB, {
+    users: safeUsers,
+    inviteCode: undefined,  // omitted from JSON output
+    wealth: wealth
+  });
+
+  const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2183,26 +2239,78 @@ async function importData(event) {
       const imported = JSON.parse(e.target.result);
       if (!imported.borrowers) { showToast('❌ Invalid backup file'); return; }
       showToast('⏳ Importing data...');
-      // Insert borrowers
+
+      // Borrowers and ipeople get new IDs on insert (the DB auto-generates them
+      // since we strip the old id). Payments.borrower_id and imonths.pid point
+      // to the OLD ids in the backup, so we build old→new maps here and remap
+      // as we go. Without this, everything below becomes orphaned on import.
+      const borrowerIdMap = {};   // oldBorrowerId → newBorrowerId
+      const ipersonIdMap = {};    // oldIpersonId  → newIpersonId
+      let skippedPayments = 0, skippedImonths = 0;
+
+      // --- Borrowers ---
       for (const b of imported.borrowers) {
-        const { id, created_at, ...data } = b;
-        await dbInsert('lb_borrowers', data).catch(()=>{});
+        const { id: oldId, created_at, ...data } = b;
+        let newRow = null;
+        try {
+          const res = await dbInsert('lb_borrowers', data);
+          newRow = Array.isArray(res) ? res[0] : res;
+        } catch(e) { console.warn('Borrower skipped:', oldId, e.message); }
+        if (newRow && newRow.id && oldId) borrowerIdMap[oldId] = newRow.id;
       }
-      // Insert payments
+
+      // --- Payments --- remap borrower_id
       for (const p of imported.payments || []) {
         const { id, created_at, ...data } = p;
+        const mapped = borrowerIdMap[data.borrower_id];
+        if (!mapped) { skippedPayments++; continue; } // orphan — parent borrower failed or missing
+        data.borrower_id = mapped;
         await dbInsert('lb_payments', data).catch(()=>{});
       }
+
+      // --- Ipeople ---
       for (const ip of imported.ipeople || []) {
-        const { id, created_at, ...data } = ip;
-        await dbInsert('lb_ipeople', data).catch(()=>{});
+        const { id: oldId, created_at, ...data } = ip;
+        let newRow = null;
+        try {
+          const res = await dbInsert('lb_ipeople', data);
+          newRow = Array.isArray(res) ? res[0] : res;
+        } catch(e) { console.warn('Iperson skipped:', oldId, e.message); }
+        if (newRow && newRow.id && oldId) ipersonIdMap[oldId] = newRow.id;
       }
+
+      // --- Imonths --- remap pid (handles both 'B:<borrowerId>' and plain iperson ids)
       for (const im of imported.imonths || []) {
         const { id, created_at, ...data } = im;
+        let newPid = null;
+        if (typeof data.pid === 'string' && data.pid.startsWith('B:')) {
+          const oldBorrowerId = data.pid.slice(2);
+          const newBorrowerId = borrowerIdMap[oldBorrowerId];
+          if (newBorrowerId) newPid = 'B:' + newBorrowerId;
+        } else if (data.pid) {
+          newPid = ipersonIdMap[data.pid];
+        }
+        if (!newPid) { skippedImonths++; continue; } // orphan
+        data.pid = newPid;
         await dbInsert('lb_imonths', data).catch(()=>{});
       }
+
+      // --- Wealth (investments + debts) ---
+      // Unlike the above, wealth rows preserve their original `id` on insert
+      // because items reference sections via `section_id` within the same table.
+      // If we regenerated IDs we'd have to remap section_id too, and with
+      // multi-user sort of sharing sections the remap gets hairy. Preserving
+      // original IDs sidesteps all of it; duplicates skip via .catch.
+      for (const w of imported.wealth || []) {
+        const { created_at, ...data } = w;
+        await dbInsert('lb_wealth', data).catch(()=>{});
+      }
+
       await loadAllData();
-      showToast('✅ Import done!');
+      const note = (skippedPayments || skippedImonths)
+        ? ' (skipped ' + skippedPayments + ' orphan payment' + (skippedPayments!==1?'s':'') + ', ' + skippedImonths + ' orphan imonth' + (skippedImonths!==1?'s':'') + ')'
+        : '';
+      showToast('✅ Import done!' + note);
       renderDashboard(); renderInterestPage(); maybeRefreshInvTotal();
     } catch(err) { showToast('❌ Import failed: ' + err.message); }
   };
@@ -2234,28 +2342,37 @@ async function loadWealthData(userId) {
     return loadAllUsersWealthData();
   }
   const uid = userId || (currentUser ? currentUser.id : null);
-  if (!uid) return { sections: [], items: [] };
+  if (!uid) return { sections: [], items: [], debts: [] };
   try {
     const rows = await dbSelect('lb_wealth', 'user_id=eq.' + uid + '&order=sort_order.asc,created_at.asc');
+    const allSections = rows.filter(function(r){ return r.type === 'section'; });
+    const allItems = rows.filter(function(r){ return r.type === 'item'; });
+    // Convention: a section whose name is "Debts" (case-insensitive) holds debt items.
+    // This avoids needing a new `type` value in the DB (which may have a CHECK constraint).
+    const debtSecIds = new Set(allSections.filter(function(s){ return (s.name||'').toLowerCase().trim() === 'debts'; }).map(function(s){ return s.id; }));
     return {
-      sections: rows.filter(function(r){ return r.type === 'section'; }),
-      items: rows.filter(function(r){ return r.type === 'item'; })
+      sections: allSections.filter(function(s){ return !debtSecIds.has(s.id); }),
+      items: allItems.filter(function(it){ return !debtSecIds.has(it.section_id); }),
+      debts: allItems.filter(function(it){ return debtSecIds.has(it.section_id); })
     };
-  } catch(e) { console.error('loadWealthData failed', e); return { sections: [], items: [] }; }
+  } catch(e) { console.error('loadWealthData failed', e); return { sections: [], items: [], debts: [] }; }
 }
 
 async function loadAllUsersWealthData() {
   // Load all rows for all users, merge sections by name, sum item values
   try {
     const rows = await dbSelect('lb_wealth', 'order=sort_order.asc,created_at.asc');
-    // Build merged sections (dedupe by name)
     const allSections = rows.filter(function(r){ return r.type === 'section'; });
     const allItems = rows.filter(function(r){ return r.type === 'item'; });
 
-    // Merge sections by name (case-insensitive), keep first occurrence's id
+    // A section named "Debts" (any user) holds debt items — keep them separate.
+    const debtSecIds = new Set(allSections.filter(function(s){ return (s.name||'').toLowerCase().trim() === 'debts'; }).map(function(s){ return s.id; }));
+    const nonDebtSections = allSections.filter(function(s){ return !debtSecIds.has(s.id); });
+
+    // Merge non-debt sections by name (case-insensitive), keep first occurrence's id
     const mergedSections = [];
-    const sectionNameMap = {}; // name.lower -> merged section id
-    allSections.forEach(function(sec) {
+    const sectionNameMap = {};
+    nonDebtSections.forEach(function(sec) {
       const key = sec.name.toLowerCase().trim();
       if (!sectionNameMap[key]) {
         sectionNameMap[key] = sec.id;
@@ -2263,20 +2380,24 @@ async function loadAllUsersWealthData() {
       }
     });
 
-    // Remap items to merged section ids
-    const mergedItems = allItems.map(function(it) {
-      // Find which merged section this item's original section belongs to
-      const origSec = allSections.find(function(s){ return s.id === it.section_id; });
-      if (!origSec) return it;
-      const key = origSec.name.toLowerCase().trim();
-      const mergedSecId = sectionNameMap[key];
-      return Object.assign({}, it, { section_id: mergedSecId });
-    });
+    // Remap non-debt items to their merged section ids
+    const mergedItems = allItems
+      .filter(function(it){ return !debtSecIds.has(it.section_id); })
+      .map(function(it) {
+        const origSec = nonDebtSections.find(function(s){ return s.id === it.section_id; });
+        if (!origSec) return it;
+        const key = origSec.name.toLowerCase().trim();
+        const mergedSecId = sectionNameMap[key];
+        return Object.assign({}, it, { section_id: mergedSecId });
+      });
 
-    return { sections: mergedSections, items: mergedItems };
+    // Debts across all users
+    const allDebts = allItems.filter(function(it){ return debtSecIds.has(it.section_id); });
+
+    return { sections: mergedSections, items: mergedItems, debts: allDebts };
   } catch(e) {
     console.error('loadAllUsersWealthData failed', e);
-    return { sections: [], items: [] };
+    return { sections: [], items: [], debts: [] };
   }
 }
 
@@ -2346,24 +2467,35 @@ async function renderInvestments() {
   // Show loading state
   document.getElementById('inv-sections-wrap').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:14px">Loading...</div>';
 
-  const data = await loadWealthData(window._invEditingUserId);
+  // For the "All" view we must pass null so loadWealthData merges across every user.
+  // _invEditingUserId stays as currentUser.id for any (disabled) edit context.
+  const loadUid = isAllView ? null : window._invEditingUserId;
+  const data = await loadWealthData(loadUid);
   const sections = data.sections.slice().sort(function(a,b){ return (a.sort_order||0)-(b.sort_order||0); });
 
   const loanTotal = isAllView ? getTotalLentForUser(null) : getTotalLentForUser(window._invEditingUserId);
   let invTotal = 0, invInvested = 0;
   data.items.forEach(function(it) { invTotal += Number(it.value)||0; invInvested += Number(it.invested)||0; });
-  const grandTotal = invTotal + loanTotal;
+  const debts = data.debts || [];
+  const debtTotal = debts.reduce(function(s, d){ return s + (Number(d.value)||0); }, 0);
+  const grossTotal = invTotal + loanTotal;
+  const netTotal = grossTotal - debtTotal;
   const grandGain = invTotal - invInvested;
   const grandPct = invInvested > 0 ? ((grandGain/invInvested)*100).toFixed(1) : null;
 
   document.getElementById('inv-total-card-wrap').innerHTML =
     '<div class="inv-total-card">' +
-    '<div class="inv-total-label">Total Portfolio Value</div>' +
-    '<div class="inv-total-value">' + fmtInv(grandTotal) + '</div>' +
-    (invInvested > 0 ? '<div class="inv-total-sub">Investments: ' + fmtInv(invTotal) +
-      ' &nbsp;&middot;&nbsp; <span style="color:' + (grandGain>=0?'var(--accent2)':'var(--danger)') + '">' +
-      (grandGain>=0?'+':'') + fmtInv(grandGain) + (grandPct?' ('+grandPct+'%)':'') + '</span>' +
-      (loanTotal > 0 ? ' &nbsp;&middot;&nbsp; Loans: ' + fmtInv(loanTotal) : '') + '</div>' : '') +
+    '<div class="inv-total-label">' + (debtTotal > 0 ? 'Net Worth' : 'Total Portfolio Value') + '</div>' +
+    '<div class="inv-total-value">' + fmtInv(netTotal) + '</div>' +
+    '<div class="inv-total-sub">' +
+      (invInvested > 0
+        ? 'Investments: ' + fmtInv(invTotal) +
+          ' &nbsp;&middot;&nbsp; <span style="color:' + (grandGain>=0?'var(--accent2)':'var(--danger)') + '">' +
+          (grandGain>=0?'+':'') + fmtInv(grandGain) + (grandPct?' ('+grandPct+'%)':'') + '</span>'
+        : (invTotal > 0 ? 'Investments: ' + fmtInv(invTotal) : '')) +
+      (loanTotal > 0 ? ' &nbsp;&middot;&nbsp; Loans: ' + fmtInv(loanTotal) : '') +
+      (debtTotal > 0 ? ' &nbsp;&middot;&nbsp; <span style="color:var(--danger)">Debts: &minus;' + fmtInv(debtTotal) + '</span>' : '') +
+    '</div>' +
     '</div>';
 
   let html = '';
@@ -2429,9 +2561,49 @@ async function renderInvestments() {
       '</div>';
   });
 
+  // ===== DEBTS BLOCK =====
+  // A single flat group for anything you owe. Subtracts from Net Worth above.
+  // In the "All" merged view we show debts read-only too.
+  if (debts.length > 0 || canEdit) {
+    let debtsItemsHtml = debts.map(function(d) {
+      const editBtns = canEdit
+        ? '<div style="display:flex;gap:12px;margin-top:8px;justify-content:flex-end;align-items:center">' +
+          '<span class="inv-action-btn" data-edit-debt="' + d.id + '" style="font-size:20px;cursor:pointer;color:var(--muted);padding:4px">&#9998;</span>' +
+          '<span class="inv-action-btn" data-del-debt="' + d.id + '" style="font-size:20px;cursor:pointer;color:var(--danger);padding:4px">&#128465;</span>' +
+          '</div>' : '';
+      return '<div class="inv-item">' +
+        '<div class="inv-item-left">' +
+        '<div class="inv-item-name">' + d.name + '</div>' +
+        (d.notes ? '<div class="inv-item-meta">' + d.notes + '</div>' : '') +
+        (d.date ? '<div class="inv-item-meta" style="opacity:0.5">As of ' + d.date + '</div>' : '') +
+        '</div>' +
+        '<div class="inv-item-right">' +
+        '<div class="inv-item-value" style="color:var(--danger)">&minus;' + fmtInv(Number(d.value)) + '</div>' +
+        (Number(d.invested) > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">Original: ' + fmtInv(Number(d.invested)) + '</div>' : '') +
+        editBtns + '</div></div>';
+    }).join('');
+
+    if (canEdit) debtsItemsHtml += '<div class="inv-add-btn" data-add-debt="1" style="color:var(--danger);border-color:rgba(232,112,109,0.4)">+ Add debt</div>';
+
+    const debtsHeaderTotal = debtTotal > 0
+      ? '<div class="inv-section-total" style="color:var(--danger)">&minus;' + fmtInv(debtTotal) + '</div>'
+      : '<div class="inv-section-total" style="color:var(--muted);font-weight:500;font-size:13px">None</div>';
+
+    html += '<div class="inv-section" style="margin-top:24px">' +
+      '<div class="inv-section-header" data-toggle="debts-group" style="background:rgba(232,112,109,0.08);border-color:rgba(232,112,109,0.25)">' +
+      '<div><div class="inv-section-title" style="color:var(--danger)">Debts</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + debts.length + ' item' + (debts.length!==1?'s':'') + ' · subtracted from net worth</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      debtsHeaderTotal +
+      '<div class="inv-section-chevron" id="chev-debts-group">&#9660;</div>' +
+      '</div></div>' +
+      '<div class="inv-items" id="invitems-debts-group" style="display:none">' + debtsItemsHtml + '</div>' +
+      '</div>';
+  }
+
   document.getElementById('inv-sections-wrap').innerHTML = html;
   document.getElementById('inv-sections-wrap').onclick = function(e) {
-    const btn = e.target.closest('[data-toggle],[data-edit-item],[data-del-item],[data-add-item],[data-del-sec],[data-edit-sec]');
+    const btn = e.target.closest('[data-toggle],[data-edit-item],[data-del-item],[data-add-item],[data-del-sec],[data-edit-sec],[data-edit-debt],[data-del-debt],[data-add-debt]');
     if (!btn) return;
     e.stopPropagation();
     if (btn.dataset.toggle) { toggleInvSection(btn.dataset.toggle); return; }
@@ -2440,6 +2612,9 @@ async function renderInvestments() {
     if (btn.dataset.addItem) { openAddInvItem(btn.dataset.addItem, data.sections); return; }
     if (btn.dataset.delSec) { deleteInvSection(btn.dataset.delSec); return; }
     if (btn.dataset.editSec) { openRenameSec(btn.dataset.editSec, data.sections); return; }
+    if (btn.dataset.editDebt) { openEditDebt(btn.dataset.editDebt, data); return; }
+    if (btn.dataset.delDebt) { deleteInvItem(btn.dataset.delDebt); return; }
+    if (btn.dataset.addDebt !== undefined) { openAddDebt(); return; }
   };
 }
 
@@ -2464,8 +2639,15 @@ function setInvModalTab(tab) {
   invModalTab = tab;
   document.getElementById('inv-section-fields').style.display = tab==='section' ? '' : 'none';
   document.getElementById('inv-item-fields').style.display = tab==='item' ? '' : 'none';
+  document.getElementById('inv-debt-fields').style.display = tab==='debt' ? '' : 'none';
   document.getElementById('invtab-section').classList.toggle('active', tab==='section');
   document.getElementById('invtab-item').classList.toggle('active', tab==='item');
+  document.getElementById('invtab-debt').classList.toggle('active', tab==='debt');
+  // Hide the "Category" tab when editing (only relevant to that specific editing flow)
+  document.getElementById('inv-modal-title').textContent =
+    tab === 'debt' ? (document.getElementById('inv-edit-item-id').value ? 'Edit Debt' : 'Add Debt')
+    : tab === 'item' ? (document.getElementById('inv-edit-item-id').value ? 'Edit Item' : 'Add Investment')
+    : 'Add Category';
 }
 
 function populateSectionSelect(sections, selectedId) {
@@ -2484,6 +2666,11 @@ function openAddInvModal() {
   document.getElementById('inv-item-invested').value = '';
   document.getElementById('inv-item-notes').value = '';
   document.getElementById('inv-item-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('inv-debt-name').value = '';
+  document.getElementById('inv-debt-value').value = '';
+  document.getElementById('inv-debt-invested').value = '';
+  document.getElementById('inv-debt-notes').value = '';
+  document.getElementById('inv-debt-date').value = new Date().toISOString().split('T')[0];
   loadWealthData(window._invEditingUserId).then(function(data){ populateSectionSelect(data.sections, ''); });
   setInvModalTab('section');
   document.getElementById('modal-inv').classList.add('open');
@@ -2492,6 +2679,24 @@ function openAddInvModal() {
 function openAddInvItem(sectionId, sections) {
   openAddInvModal();
   setTimeout(function(){ setInvModalTab('item'); populateSectionSelect(sections, sectionId); }, 10);
+}
+
+function openAddDebt() {
+  openAddInvModal();
+  setTimeout(function(){ setInvModalTab('debt'); }, 10);
+}
+
+function openEditDebt(debtId, data) {
+  const d = (data.debts || []).find(function(x){ return x.id === debtId; });
+  if (!d) return;
+  document.getElementById('inv-edit-item-id').value = debtId;
+  document.getElementById('inv-debt-name').value = d.name;
+  document.getElementById('inv-debt-value').value = d.value ? Number(d.value).toLocaleString('en-IN') : '';
+  document.getElementById('inv-debt-invested').value = d.invested ? Number(d.invested).toLocaleString('en-IN') : '';
+  document.getElementById('inv-debt-notes').value = d.notes || '';
+  document.getElementById('inv-debt-date').value = d.date || '';
+  setInvModalTab('debt');
+  document.getElementById('modal-inv').classList.add('open');
 }
 
 function openEditInvItem(itemId, data) {
@@ -2516,11 +2721,46 @@ async function saveInvModal() {
   if (invModalTab === 'section') {
     const name = document.getElementById('inv-sec-name').value.trim();
     if (!name) { showToast('Please enter a category name'); return; }
-    const data = await loadWealthData(uid);
-    const maxOrder = data.sections.reduce(function(m,s){ return Math.max(m, s.sort_order||0); }, -1);
-    await wealthInsert({ id: 'sec-' + Date.now(), user_id: uid, type: 'section', name: name, sort_order: maxOrder + 1 });
-    closeModal('modal-inv');
-    renderInvestments();
+    if (name.toLowerCase().trim() === 'debts') { showToast('"Debts" is a reserved name — use the Debt tab instead'); return; }
+    try {
+      const data = await loadWealthData(uid);
+      const maxOrder = data.sections.reduce(function(m,s){ return Math.max(m, s.sort_order||0); }, -1);
+      await wealthInsert({ id: 'sec-' + Date.now(), user_id: uid, type: 'section', name: name, sort_order: maxOrder + 1 });
+      closeModal('modal-inv');
+      renderInvestments();
+    } catch(e) { showToast('⚠️ Save failed: ' + e.message); console.error(e); }
+    return;
+  }
+
+  if (invModalTab === 'debt') {
+    const name = document.getElementById('inv-debt-name').value.trim();
+    const value = parseFloat((document.getElementById('inv-debt-value').value||'0').replace(/,/g,'')) || 0;
+    const invested = parseFloat((document.getElementById('inv-debt-invested').value||'0').replace(/,/g,'')) || 0;
+    const notes = document.getElementById('inv-debt-notes').value.trim();
+    const date = document.getElementById('inv-debt-date').value;
+    if (!name) { showToast('Please enter debt name'); return; }
+    if (!value) { showToast('Please enter amount owed'); return; }
+    try {
+      if (editItemId) {
+        // Debt edits only touch the visible fields — section_id stays put.
+        await wealthUpdate(editItemId, { name: name, value: value, invested: invested, notes: notes, date: date });
+      } else {
+        // Ensure a "Debts" section exists for this user; create it on demand.
+        // Storing debts as regular items inside this reserved section avoids any
+        // schema change (no new `type` value needed on lb_wealth).
+        const existingSections = await dbSelect('lb_wealth', 'user_id=eq.' + uid + '&type=eq.section');
+        let debtSec = existingSections.find(function(s){ return (s.name||'').toLowerCase().trim() === 'debts'; });
+        if (!debtSec) {
+          const created = await wealthInsert({ id: 'sec-debts-' + uid.substring(0,8) + '-' + Date.now(), user_id: uid, type: 'section', name: 'Debts', sort_order: 9999 });
+          debtSec = Array.isArray(created) ? created[0] : created;
+        }
+        const data = await loadWealthData(uid);
+        const maxOrder = (data.debts || []).reduce(function(m,d){ return Math.max(m, d.sort_order||0); }, -1);
+        await wealthInsert({ id: 'debt-' + Date.now(), user_id: uid, type: 'item', section_id: debtSec.id, name: name, value: value, invested: invested, notes: notes, date: date, sort_order: maxOrder + 1 });
+      }
+      closeModal('modal-inv');
+      renderInvestments();
+    } catch(e) { showToast('⚠️ Save failed: ' + e.message); console.error(e); }
     return;
   }
 
@@ -2532,15 +2772,17 @@ async function saveInvModal() {
   const date = document.getElementById('inv-item-date').value;
   if (!name) { showToast('Please enter item name'); return; }
 
-  if (editItemId) {
-    await wealthUpdate(editItemId, { section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
-  } else {
-    const data = await loadWealthData(uid);
-    const maxOrder = data.items.filter(function(i){ return i.section_id===sectionId; }).reduce(function(m,i){ return Math.max(m,i.sort_order||0); }, -1);
-    await wealthInsert({ id: 'itm-' + Date.now(), user_id: uid, type: 'item', section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date, sort_order: maxOrder + 1 });
-  }
-  closeModal('modal-inv');
-  renderInvestments();
+  try {
+    if (editItemId) {
+      await wealthUpdate(editItemId, { section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date });
+    } else {
+      const data = await loadWealthData(uid);
+      const maxOrder = data.items.filter(function(i){ return i.section_id===sectionId; }).reduce(function(m,i){ return Math.max(m,i.sort_order||0); }, -1);
+      await wealthInsert({ id: 'itm-' + Date.now(), user_id: uid, type: 'item', section_id: sectionId, name: name, value: value, invested: invested, notes: notes, date: date, sort_order: maxOrder + 1 });
+    }
+    closeModal('modal-inv');
+    renderInvestments();
+  } catch(e) { showToast('⚠️ Save failed: ' + e.message); console.error(e); }
 }
 
 async function deleteInvItem(itemId) {
@@ -2557,47 +2799,6 @@ async function deleteInvSection(secId) {
   await Promise.all(data.items.filter(function(it){ return it.section_id===secId; }).map(function(it){ return wealthDelete(it.id); }));
   await wealthDelete(secId);
   renderInvestments();
-}
-
-// Seed YOUR current wealth data into Supabase on first load
-// This runs once — checks if you already have data, if not inserts everything from screenshots
-async function seedYashWealthData(userId) {
-  const existing = await loadWealthData(userId);
-  if (existing.sections.length > 0) return; // already seeded
-  const now = Date.now();
-  const rows = [
-    // Sections
-    { id: 'sec-shares', user_id: userId, type: 'section', name: 'Shares', sort_order: 0 },
-    { id: 'sec-ppf', user_id: userId, type: 'section', name: 'PPF', sort_order: 1 },
-    { id: 'sec-mf', user_id: userId, type: 'section', name: 'Mutual Funds', sort_order: 2 },
-    { id: 'sec-silver', user_id: userId, type: 'section', name: 'Gold & Silver', sort_order: 3 },
-    { id: 'sec-bank', user_id: userId, type: 'section', name: 'Bank Balance', sort_order: 4 },
-    { id: 'sec-cash', user_id: userId, type: 'section', name: 'Cash', sort_order: 5 },
-    // Shares
-    { id: 'itm-yash', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Yash Shares', value: 277807, invested: 191205, notes: '86,635 (Profit) - 45.35%', date: '2026-04-17', sort_order: 0 },
-    { id: 'itm-srushti', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Srushti Shares', value: 447340, invested: 332959, notes: '1,14,343 Profit - 34.35%', date: '2026-04-05', sort_order: 1 },
-    { id: 'itm-nse', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'NSE Shares', value: 112000, invested: 100000, notes: '60 Shares at 1,00,000', date: '2026-04-17', sort_order: 2 },
-    { id: 'itm-mse', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'MSE Shares', value: 114750, invested: 102000, notes: '17,000 Shares at 1,02,000', date: '2026-04-17', sort_order: 3 },
-    { id: 'itm-copper', user_id: userId, type: 'item', section_id: 'sec-shares', name: 'Copper (US Stocks)', value: 11000, invested: 10000, notes: 'Copper Via IND Money (US Stock)', date: '2026-04-17', sort_order: 4 },
-    // PPF
-    { id: 'itm-ppf', user_id: userId, type: 'item', section_id: 'sec-ppf', name: 'PPF', value: 780965, invested: 607500, notes: '7.1% interest - 28.55% Return', date: '2026-03-31', sort_order: 0 },
-    // Mutual Funds
-    { id: 'itm-mfmain', user_id: userId, type: 'item', section_id: 'sec-mf', name: 'Mutual Funds Portfolio', value: 875033, invested: 793403, notes: '14.89% CAGR', date: '2026-04-17', sort_order: 0 },
-    { id: 'itm-jio', user_id: userId, type: 'item', section_id: 'sec-mf', name: 'Jio Blackrock', value: 14600, invested: 15000, notes: 'via Jio App', date: '2026-04-17', sort_order: 1 },
-    // Gold & Silver
-    { id: 'itm-silver', user_id: userId, type: 'item', section_id: 'sec-silver', name: 'Silver Coin', value: 70000, invested: 70000, notes: '75gm · 44gm with Yash · 2% interest from 23 Aug 2025', date: '2026-02-23', sort_order: 0 },
-    // Bank Balance
-    { id: 'itm-idfc', user_id: userId, type: 'item', section_id: 'sec-bank', name: 'Srushti IDFC Bank', value: 150000, invested: 150000, notes: 'Srushti Bank Account', date: '2026-04-17', sort_order: 0 },
-    { id: 'itm-suryoday', user_id: userId, type: 'item', section_id: 'sec-bank', name: "Srushti Suryoday's Account", value: 881000, invested: 881000, notes: 'Balance', date: '2026-04-17', sort_order: 1 },
-    // Cash
-    { id: 'itm-cash1', user_id: userId, type: 'item', section_id: 'sec-cash', name: 'Cash', value: 50000, invested: 50000, notes: 'Cash by Neel - B/W', date: '2026-04-17', sort_order: 0 },
-    { id: 'itm-cash2', user_id: userId, type: 'item', section_id: 'sec-cash', name: 'Cash - Dad ++', value: 27000, invested: 27000, notes: 'Cash from Dad, interest etc', date: '2026-04-17', sort_order: 1 }
-  ];
-  // Insert all rows (Supabase accepts array insert)
-  try {
-    await sbFetch('lb_wealth', { method: 'POST', body: JSON.stringify(rows) });
-    console.log('Wealth data seeded successfully');
-  } catch(e) { console.error('Seed failed:', e); }
 }
 </script>
 </body>
