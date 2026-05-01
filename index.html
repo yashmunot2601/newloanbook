@@ -1673,14 +1673,19 @@ function shortMonth(key) { const [y,m] = key.split('-'); return new Date(y,m-1,1
 
 let gridYear = new Date().getFullYear();
 
-// Decide whether a (settled) borrower should still appear on the interest grid.
-// Rules:
-//   - If they still owe principal → always show.
-//   - Else show only if there is at least one past/current month where they
-//     had an opening balance and the interest for that month hasn't been marked received.
-// Example: settled Apr 15 → April cell still owes ~15 days of pro-rata interest,
-// so the person stays on the grid until that April cell is marked ✅.
-// Example: settled Mar 31 → once March is marked ✅, they disappear on May 1.
+// Decide whether a borrower should appear on the interest grid.
+// Rule (per user spec): show whenever any past/current month has expected
+// interest > 0 that the user hasn't ticked ✅. The calendar date is
+// intentionally NOT a factor — even if the loan was settled months ago,
+// the borrower stays visible until you mark the final interest received.
+// Active loans (balance > 0) always show.
+//
+// Examples:
+//   Settled Mar 31 with March cell unmarked → visible in Apr/May/June/...
+//     until March is marked ✅, then disappears immediately.
+//   Settled Apr 15 with April cell unmarked → visible until April is
+//     marked, regardless of how much time passes.
+//   All cells marked → hidden the same instant the last cell is ticked.
 function shouldShowBorrowerOnGrid(b) {
   if (getBalance(b.id) > 0) return true;
   const now = new Date();
