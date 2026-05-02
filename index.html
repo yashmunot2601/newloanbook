@@ -517,13 +517,6 @@
       <div style="overflow-x:auto;margin:0 -16px;padding:0 16px 4px">
         <div id="interest-grid-wrap"></div>
       </div>
-      <!-- TEMP: Diagnostics panel — tap a borrower to see exactly why the filter keeps them on the grid. Remove when issue is fixed. -->
-      <div style="margin:16px 0;padding:10px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px;font-size:12px">
-        <div style="color:var(--muted);margin-bottom:8px">🔧 Debug — tap a borrower to dump grid filter state</div>
-        <div id="grid-debug-borrower-list" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        <pre id="grid-debug-output" style="margin-top:8px;padding:8px;background:#000;color:#0f0;border-radius:6px;font-size:10px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;display:none"></pre>
-      </div>
-      <!-- /TEMP -->
       <div style="height:20px"></div>
     </div>
 
@@ -1699,71 +1692,6 @@ let gridYear = new Date().getFullYear();
 //   Settled Apr 15 with April cell unmarked → visible until April is
 //     marked, regardless of how much time passes.
 //   All cells marked → hidden the same instant the last cell is ticked.
-// ============ TEMP DIAGNOSTICS — remove when grid filter issue is resolved ============
-function renderGridDebugList() {
-  const wrap = document.getElementById('grid-debug-borrower-list');
-  if (!wrap) return;
-  // Show every borrower with a rate, regardless of whether they're currently on the grid.
-  // This lets us inspect both "shouldn't be there but is" and "should be there but isn't".
-  const borrowers = (DB.borrowers || []).filter(b => b.rate > 0);
-  wrap.innerHTML = borrowers.map(b =>
-    '<button onclick="dumpBorrowerDebug(\'' + b.id + '\')" style="padding:4px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer">' +
-    (b.name || '?') + '</button>'
-  ).join('');
-}
-
-function dumpBorrowerDebug(borrowerId) {
-  const b = DB.borrowers.find(x => x.id === borrowerId);
-  const out = document.getElementById('grid-debug-output');
-  if (!b || !out) return;
-  const lines = [];
-  lines.push('=== ' + b.name + ' ===');
-  lines.push('id: ' + b.id);
-  lines.push('amount: ' + b.amount + ' | rate: ' + b.rate + '% | start: ' + b.date);
-  const balanceNow = getBalance(b.id);
-  lines.push('CURRENT BALANCE: ' + balanceNow + (balanceNow > 0 ? '  ← active, always shows' : '  ← settled'));
-  lines.push('');
-  lines.push('--- payments (raw) ---');
-  const pays = (DB.payments || []).filter(p => p.borrower_id === b.id)
-    .slice().sort((a,c) => (a.date || '').localeCompare(c.date || ''));
-  if (pays.length === 0) lines.push('(none)');
-  pays.forEach(p => lines.push(p.date + '  ' + p.type + '  ' + p.amount));
-  lines.push('');
-  lines.push('--- imonths records (ticks) for B:' + b.id + ' ---');
-  const ticks = (DB.imonths || []).filter(m => m.pid === 'B:' + b.id)
-    .slice().sort((a,c) => (a.month || '').localeCompare(c.month || ''));
-  if (ticks.length === 0) lines.push('(none — no cells ticked for this borrower)');
-  ticks.forEach(t => lines.push(t.month + '  amount=' + (t.amount ?? '?')));
-  lines.push('');
-  lines.push('--- per-month walk (what shouldShowBorrowerOnGrid sees) ---');
-  lines.push('INTEREST_GRID_EPOCH = ' + INTEREST_GRID_EPOCH);
-  const now = new Date();
-  const thisMonth = monthKey(now);
-  const loanStart = b.date ? b.date.substring(0, 7) : thisMonth;
-  const startStr = loanStart > INTEREST_GRID_EPOCH ? loanStart : INTEREST_GRID_EPOCH;
-  lines.push('walking from ' + startStr + ' through ' + thisMonth);
-  let cur = parseLocalDate(startStr + '-01');
-  const end = parseLocalDate(thisMonth + '-01');
-  let firstTrigger = null;
-  while (cur <= end) {
-    const mk = monthKey(cur);
-    const rec = (DB.imonths || []).find(m => m.pid === 'B:' + b.id && m.month === mk);
-    const exp = getProRataInterest(b.id, b.rate, mk);
-    let verdict = '';
-    if (rec) verdict = 'TICKED ✅ (skip)';
-    else if (exp <= 0) verdict = 'no interest expected (skip)';
-    else { verdict = '*** UNTICKED & exp=' + exp + ' → KEEPS BORROWER ON GRID ***'; if (!firstTrigger) firstTrigger = mk; }
-    lines.push('  ' + mk + '  exp=' + exp + '  ' + verdict);
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  lines.push('');
-  lines.push('VERDICT: shouldShowBorrowerOnGrid = ' + shouldShowBorrowerOnGrid(b));
-  if (firstTrigger) lines.push('First trigger month: ' + firstTrigger);
-  out.style.display = 'block';
-  out.textContent = lines.join('\n');
-}
-// ============ /TEMP DIAGNOSTICS ============
-
 function shouldShowBorrowerOnGrid(b) {
   if (getBalance(b.id) > 0) return true;
 
@@ -1818,7 +1746,6 @@ function renderInterestPage() {
   const thisMonth = monthKey(now);
   const allPeople = getFilteredIpeople();
   renderFilterTabs('interest-filter-tabs');
-  renderGridDebugList();
 
   // Summary
   // Last month key
